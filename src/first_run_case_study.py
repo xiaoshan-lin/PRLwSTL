@@ -42,8 +42,75 @@ from write_files import write_to_land_file, write_to_csv_iter, write_to_csv,\
 from learning import learn_deadlines
 from lomap import Ts
 
+import IPython
 
-def prep_for_learning(ep_len, m, n, h, init_states, obstacles, pick_up_state, delivery_state, rewards, rew_val, custom_flag, custom_task, rewards2, rew_val2):
+def tau_mdp(ts, ts_weighted, tau):
+
+	def next_mdp_states(state):
+		return ts.g.edge[state].keys()
+		# all_states = adj_mat[state]
+		# adj_states = []
+		# for state,cost in enumerate(all_states):
+		# 	if cost > 0:
+		# 		adj_states.append(state)
+		# return adj_states
+
+	def build_states(past, tau):
+		next_states = next_mdp_states(past[-1])
+		if len(next_states) == 0:
+			# no next states. Maybe an obstacle?
+			return []
+		tmdp_states = [past + [ns] for ns in next_states]
+		if len(tmdp_states[0]) == tau:
+			# each tau-MDP state has 'tau' MDP states
+			# make each state unmutable
+			return [tuple(s) for s in tmdp_states]
+		
+		# recurse for each state in states
+		more_tmdp_states = []
+		for x in tmdp_states:
+			more_tmdp_states.extend(build_states(x,tau))
+		
+		return more_tmdp_states
+	
+	# make list of tau mdp states where each state is represented by a tuple of mdp states
+	tmdp_states = []
+	for s in ts.g.nodes():
+		tmdp_states.extend(build_states([s],tau))
+
+	# try and recreate process used in ts.read_from_file() except with tau mdp
+	# There seems to be a ts with only weights 1 and ts_dict with original weights
+	# Looks like it will be easiest to create another nx for weights rather than recreate desired output format
+	tmdp = Ts(directed=True, multi=False)
+	tmdp_weighted = Ts(directed=True, multi=False)
+	tmdp.name = tmdp_weighted.name = "Tau MDP"
+	tmdp.init = tmdp_weighted.init = {('Base1',) * tau:1}
+
+	# create dict of dicts representing edges and attributes of each edge to construct the nx graph from
+	# attributes are based on the mdp edge between the last (current) states in the tau mdp sequence
+	edge_dict = {}
+	edge_dict_weighted = {}
+	for x1 in tmdp_states:
+		edge_attrs = ts.g.edge[x1[-1]]
+		edge_attrs_weighted = ts_weighted.g.edge[x1[-1]]
+		# tmdp states are adjacent if they share the same (offset) history. "current" state transition is implied valid 
+		# based on the set of names created
+		edge_dict[x1] = {x2:edge_attrs[x2[-1]] for x2 in tmdp_states if x1[1:] == x2[:-1]}
+		edge_dict_weighted[x1] = {x2:edge_attrs_weighted[x2[-1]][0] for x2 in tmdp_states if x1[1:] == x2[:-1]}
+
+	tmdp.g = nx.from_dict_of_dicts(edge_dict, create_using=nx.MultiDiGraph()) 
+	tmdp_weighted.g = nx.from_dict_of_dicts(edge_dict_weighted, create_using=nx.MultiDiGraph()) 
+
+	# add node attributes based on last state in sequence
+	for n in tmdp.g.nodes():
+		tmdp.g.node[n] = ts.g.node[n[-1]]
+	for n in tmdp_weighted.g.nodes():
+		tmdp_weighted.g.node[n] = ts_weighted.g.node[n[-1]]
+
+	return(tmdp, tmdp_weighted)
+	
+
+def prep_for_learning(ep_len, m, n, h, init_states, obstacles, pick_up_state, delivery_state, rewards, rew_val, custom_flag, custom_task, rewards2, rew_val2, tau):
 	# Create the environment and get the TS #
 	ts_start_time = timeit.default_timer()
 	disc = 1
@@ -59,6 +126,14 @@ def prep_for_learning(ep_len, m, n, h, init_states, obstacles, pick_up_state, de
 	ts_dict.read_from_file(ts_file[0])
 	ts = expand_duration_ts(ts_dict)
 	ts_timecost =  timeit.default_timer() - ts_start_time
+	# nx.drawing.nx_agraph.view_pygraphviz(ts.g)
+
+	# Create a tau MDP by combining "past" TS states
+	# Variables to recreate
+	# nx.get_edge_attributes(ts_dict.g,'edge_weight')
+	# ts
+	tmdp, tmdp_weighted = tau_mdp(ts, ts_dict, tau)
+
 
 	# Get the DFA #
 	dfa_start_time = timeit.default_timer()
@@ -79,8 +154,10 @@ def prep_for_learning(ep_len, m, n, h, init_states, obstacles, pick_up_state, de
 	alpha = 1
 	nom_weight_dict = {}
 	weight_dict = {}
-	pa_or = ts_times_fsa(ts, dfa_inf) # Original pa
-	edges_all = nx.get_edge_attributes(ts_dict.g,'edge_weight')
+	# pa_or = ts_times_fsa(ts, dfa_inf) # Original pa
+	pa_or = ts_times_fsa(tmdp, dfa_inf) # Original pa
+	# edges_all = nx.get_edge_attributes(ts_dict.g,'edge_weight')
+	edges_all = nx.get_edge_attributes(tmdp_weighted.g,'edge_weight')
 	max_edge = max(edges_all, key=edges_all.get)
 	norm_factor = edges_all[max_edge]
 	for pa_edge in pa_or.g.edges():
@@ -108,22 +185,32 @@ def prep_for_learning(ep_len, m, n, h, init_states, obstacles, pick_up_state, de
 	init_state = [init_states[0][0] * n + init_states[0][1]]
 	pa2ts = []
 	for i in range(len(pa.g.nodes())):
-		if pa.g.nodes()[i][0] != 'Base1':
-			pa2ts.append(int(pa.g.nodes()[i][0].replace("r","")))
+		if pa.g.nodes()[i][0][-1] != 'Base1':
+			pa2ts.append(int(pa.g.nodes()[i][0][-1].replace("r","")))
 		else:
 			pa2ts.append(init_state[0])
 			i_s = i # Agent's initial location in pa
+
+	# project pa on tmdp
+	pa2tmdp = np.zeros(len(pa.g.nodes()))
+	for i,x in enumerate(pa.g.nodes()):
+		# if n[0] not in tmdp.init.keys():
+		pa2tmdp[i] = int(tmdp.g.nodes().index(x[0]))
+		if x[0] in tmdp.init.keys():
+			i_tmdp = i
+
 	energy_timecost =  timeit.default_timer() - pa_start_time
 
+	# This seems to be unused.
 	# TS adjacency matrix and source-target
-	TS_adj = TS
-	TS_s   = []
-	TS_t   = []
-	for i in range(len(TS_adj)):
-		for j in range(len(TS_adj)):
-			if TS_adj[i,j] != 0:
-				TS_s.append(i)
-				TS_t.append(j)
+	# TS_adj = TS
+	# TS_s   = []
+	# TS_t   = []
+	# for i in range(len(TS_adj)):
+	# 	for j in range(len(TS_adj)):
+	# 		if TS_adj[i,j] != 0:
+	# 			TS_s.append(i)
+	# 			TS_t.append(j)
 
 	# pa adjacency matrix and source-target 
 	pa_adj_st = nx.adjacency_matrix(pa.g)
@@ -144,6 +231,7 @@ def prep_for_learning(ep_len, m, n, h, init_states, obstacles, pick_up_state, de
 	# 	rewards_ts_indexes.append(rewards[i][0] * n + rewards[i][1]) # rewards_ts_indexes[i] = rewards[i][0] * n + rewards[i][1]		
 	# 	rewards_ts[rewards_ts_indexes[i]] = rew_val
 	rewards_ts = np.zeros(m * n)
+	rewards_tmdp = np.zeros(len(tmdp.g.nodes()))
 	rewards_pa = np.zeros(len(pa2ts))
 	rewards_ts_indexes = []
 	j = 0
@@ -156,8 +244,17 @@ def prep_for_learning(ep_len, m, n, h, init_states, obstacles, pick_up_state, de
 			rewards_ts[rewards_ts_indexes[i]] = rew_val2
 			j = j + 1 
 	#print(rewards_ts)
+	for i,x in enumerate(tmdp.g.nodes()):
+		sum_reward = 0
+		for s in x:
+			if s[0] == 'r':
+				ts_state = int(s[-1])
+				sum_reward += rewards_ts[ts_state]
+		rewards_tmdp[i] = sum_reward
+
 	for i in range(len(rewards_pa)):
-		rewards_pa[i] = rewards_ts[pa2ts[i]]
+		# rewards_pa[i] = rewards_ts[pa2ts[i]]
+		rewards_pa[i] = rewards_tmdp[int(pa2tmdp[i])]
 	
 	
 	# # Display some important info
@@ -245,7 +342,7 @@ def get_possible_actions(pa_g_nodes, energy_pa, pa2ts, pa_s, pa_t, ep_len, Pr_de
 	#Creating time product MDP
 	agent_upt = []
 	for i in range(len(pa_g_nodes)):
-		if pa_g_nodes[i][1] == 0 or str(pa_g_nodes[i][0]) == 'r'+str(pick_up) : # If the mission changes check here
+		if pa_g_nodes[i][1] == 0 or str(pa_g_nodes[i][0][-1]) == 'r'+str(pick_up) : # If the mission changes check here
 			agent_upt.append(pa2ts[i])
 		else:
 			agent_upt.append([])
@@ -418,7 +515,7 @@ def Q_Learning(Pr_des, eps_unc, eps_unc_learning, N_EPISODES, SHOW_EVERY, LEARN_
 	agent_upt = []
 	for j in range(len(energy_pa)):
 		for i in range(len(pa[j].g.nodes())):
-			if pa[j].g.nodes()[i][1] == 0 or str(pa[j].g.nodes()[i][0]) == 'r'+str(pick_up[j]) :#or str(pa[j].g.nodes()[i][0]) == 'r'+str(delivery[j]): # If the mission changes check here
+			if pa[j].g.nodes()[i][1] == 0 or str(pa[j].g.nodes()[i][0][-1]) == 'r'+str(pick_up[j]) :#or str(pa[j].g.nodes()[i][0]) == 'r'+str(delivery[j]): # If the mission changes check here
 				agent_upt_i.append(pa2ts[j][i])
 			else:
 				agent_upt_i.append([])
@@ -636,26 +733,30 @@ if __name__ == '__main__':
 	custom_task = '[H^1 r46]^[0,10] * ([H^1 r57]^[0, 10] | [H^1 r24]^[0, 10])  * [H^1 Base1]^[0,10]' # '[H^1 r46]^[0,10] * ([H^1 r57]^[0, 10] | [H^1 r24]^[0, 10])  * [H^1 Base1]^[0,10]'
 	##### System Inputs for Data Prep. #####
 	ep_len = 21 # Episode length
-	m = 7       # of rows
-	n = 7       # of columns  8
+	m = 4       # of rows
+	n = 4       # of columns  8
 	h = 1       # height set to 1 for 2D case
 	ts_size =m*n
+
+	tau = 3
 	
 	# Specify initial states and obstacles (row,column,altitude/height)
-	init_states    = [(6,0,0)]                                         # Specify initial states and obstacles (row,column,altitude/height)
-	obstacles = [(2,3,0), (2,4,0), (3,3,0), (3,4,0)]
+	init_states    = [(0,0,0)]                                         # Specify initial states and obstacles (row,column,altitude/height)
+	# obstacles = [(2,3,0), (2,4,0), (3,3,0), (3,4,0)]
+	obstacles = []
 	
 
 	# Specify pick-up and delivery locations
 	pick_up_state = []
 	delivery_state = []                                      
-	pick_up_state.append([(0,0,0)])
-	pick_up_state.append([(6,6,0)])                                         
-	delivery_state.append([(0,6,0)])                                         
-	delivery_state.append([(5,3,0)])                                         
+	pick_up_state.append([(3,3,3)])
+	# pick_up_state.append([(6,6,0)])                                         
+	delivery_state.append([(1,3,0)])                                         
+	# delivery_state.append([(5,3,0)])                                         
 
 	# Specify the reward locations, and reward uncertainty
-	rewards   = [(4,0,0), (4,1,0), (5,0,0), (5,1,0)] # Reward 1 Reward Locations
+	# rewards   = [(4,0,0), (4,1,0), (5,0,0), (5,1,0)] # Reward 1 Reward Locations
+	rewards = [(1,2,0)]
 	rewards2  = []                  # Reward 2 Rewards Locations
 	rew_val   = 1  					# Reward 1 value
 	rew_val2  = 2  					# Reward 2 value
@@ -697,7 +798,7 @@ if __name__ == '__main__':
 	deliveries = []
 	for ind_p in range(len(pick_up_state)):
 		for ind in range(len(delivery_state)):
-			[i_s_i, pa_i, pa_s_i, pa_t_i, pa2ts_i, energy_pa_i, rewards_pa_i, pick_up_i, delivery_i,  pick_ups_i, deliveries_i, pa_g_nodes_i] = prep_for_learning(ep_len, m, n, h, init_states, obstacles, pick_up_state[ind_p], delivery_state[ind], rewards, rew_val, custom_flag, custom_task, rewards2, rew_val2)
+			[i_s_i, pa_i, pa_s_i, pa_t_i, pa2ts_i, energy_pa_i, rewards_pa_i, pick_up_i, delivery_i,  pick_ups_i, deliveries_i, pa_g_nodes_i] = prep_for_learning(ep_len, m, n, h, init_states, obstacles, pick_up_state[ind_p], delivery_state[ind], rewards, rew_val, custom_flag, custom_task, rewards2, rew_val2, tau)
 			i_s.append(i_s_i)
 			rewards_pa.append(rewards_pa_i)
 			pa.append(pa_i)
