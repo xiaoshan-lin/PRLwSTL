@@ -42,6 +42,8 @@ from write_files import write_to_land_file, write_to_csv_iter, write_to_csv,\
 from learning import learn_deadlines
 from lomap import Ts
 
+from tmdp_stl import tmdp_stl
+
 import IPython
 
 def tau_mdp(ts, ts_weighted, tau):
@@ -56,6 +58,9 @@ def tau_mdp(ts, ts_weighted, tau):
 		# return adj_states
 
 	def build_states(past, tau):
+		if tau == 1:
+			# One tau-MDP state per MDP state
+			return [tuple(past)]
 		next_states = next_mdp_states(past[-1])
 		if len(next_states) == 0:
 			# no next states. Maybe an obstacle?
@@ -95,8 +100,14 @@ def tau_mdp(ts, ts_weighted, tau):
 		edge_attrs_weighted = ts_weighted.g.edge[x1[-1]]
 		# tmdp states are adjacent if they share the same (offset) history. "current" state transition is implied valid 
 		# based on the set of names created
-		edge_dict[x1] = {x2:edge_attrs[x2[-1]] for x2 in tmdp_states if x1[1:] == x2[:-1]}
-		edge_dict_weighted[x1] = {x2:edge_attrs_weighted[x2[-1]][0] for x2 in tmdp_states if x1[1:] == x2[:-1]}
+		if tau > 1:
+			#TODO use next_mdp_states instead of conditional
+			edge_dict[x1] = {x2:edge_attrs[x2[-1]] for x2 in tmdp_states if x1[1:] == x2[:-1]}
+			edge_dict_weighted[x1] = {x2:edge_attrs_weighted[x2[-1]][0] for x2 in tmdp_states if x1[1:] == x2[:-1]}
+		else:
+			# Case of tau = 1
+			edge_dict[x1] = {(x2,):edge_attrs[x2] for x2 in next_mdp_states(*x1)}
+			edge_dict_weighted[x1] = {(x2,):edge_attrs_weighted[x2][0] for x2 in next_mdp_states(*x1)}
 
 	tmdp.g = nx.from_dict_of_dicts(edge_dict, create_using=nx.MultiDiGraph()) 
 	tmdp_weighted.g = nx.from_dict_of_dicts(edge_dict_weighted, create_using=nx.MultiDiGraph()) 
@@ -125,6 +136,18 @@ def prep_for_learning(ep_len, m, n, h, init_states, obstacles, pick_up_state, de
 	ts_dict = Ts(directed=True, multi=False) 
 	ts_dict.read_from_file(ts_file[0])
 	ts = expand_duration_ts(ts_dict)
+	# make coordinate dict for tmdp_stl
+	# apply offset so pos is middle of state
+	state_to_pos = dict()
+	for s in ts.g.nodes():
+		if s == 'Base1':
+			state_to_pos[s] = tuple([c + 0.5 for c in init_states[0]])
+		else:
+			num = int(s[1:])
+			#TODO: 3rd dim?
+			state_to_pos[s] = ((num // n) + 0.5, (num % n) + 0.5, 0.5)
+	stl.set_ts_sig_dict(state_to_pos)
+	
 	ts_timecost =  timeit.default_timer() - ts_start_time
 	# nx.drawing.nx_agraph.view_pygraphviz(ts.g)
 
@@ -189,7 +212,8 @@ def prep_for_learning(ep_len, m, n, h, init_states, obstacles, pick_up_state, de
 			pa2ts.append(int(pa.g.nodes()[i][0][-1].replace("r","")))
 		else:
 			pa2ts.append(init_state[0])
-			i_s = i # Agent's initial location in pa
+			if pa.g.nodes()[i][0] == ('Base1',) * tau:
+				i_s = i # Agent's initial location in pa
 
 	# project pa on tmdp
 	pa2tmdp = np.zeros(len(pa.g.nodes()))
@@ -230,31 +254,34 @@ def prep_for_learning(ep_len, m, n, h, init_states, obstacles, pick_up_state, de
 	# for i in range(len(rewards)):
 	# 	rewards_ts_indexes.append(rewards[i][0] * n + rewards[i][1]) # rewards_ts_indexes[i] = rewards[i][0] * n + rewards[i][1]		
 	# 	rewards_ts[rewards_ts_indexes[i]] = rew_val
-	rewards_ts = np.zeros(m * n)
-	rewards_tmdp = np.zeros(len(tmdp.g.nodes()))
-	rewards_pa = np.zeros(len(pa2ts))
-	rewards_ts_indexes = []
-	j = 0
-	for i in range(len(rewards)+len(rewards2)):
-		if i < len(rewards):
-			rewards_ts_indexes.append(rewards[i][0] * n + rewards[i][1]) # rewards_ts_indexes[i] = rewards[i][0] * n + rewards[i][1]		
-			rewards_ts[rewards_ts_indexes[i]] = rew_val
-		else:
-			rewards_ts_indexes.append(rewards2[j][0] * n + rewards2[j][1]) # for rew2	
-			rewards_ts[rewards_ts_indexes[i]] = rew_val2
-			j = j + 1 
-	#print(rewards_ts)
-	for i,x in enumerate(tmdp.g.nodes()):
-		sum_reward = 0
-		for s in x:
-			if s[0] == 'r':
-				ts_state = int(s[-1])
-				sum_reward += rewards_ts[ts_state]
-		rewards_tmdp[i] = sum_reward
+	# rewards_ts = np.zeros(m * n)
+	# rewards_tmdp = np.zeros(len(tmdp.g.nodes()))
+	# rewards_pa = np.zeros(len(pa2ts))
+	# rewards_ts_indexes = []
+	# j = 0
+	# for i in range(len(rewards)+len(rewards2)):
+	# 	if i < len(rewards):
+	# 		rewards_ts_indexes.append(rewards[i][0] * n + rewards[i][1]) # rewards_ts_indexes[i] = rewards[i][0] * n + rewards[i][1]		
+	# 		rewards_ts[rewards_ts_indexes[i]] = rew_val
+	# 	else:
+	# 		rewards_ts_indexes.append(rewards2[j][0] * n + rewards2[j][1]) # for rew2	
+	# 		rewards_ts[rewards_ts_indexes[i]] = rew_val2
+	# 		j = j + 1 
+	# #print(rewards_ts)
+	# for i,x in enumerate(tmdp.g.nodes()):
+	# 	sum_reward = 0
+	# 	for s in x:
+	# 		if s[0] == 'r':
+	# 			ts_state = int(s[-1])
+	# 			sum_reward += rewards_ts[ts_state]
+	# 	rewards_tmdp[i] = sum_reward
 
-	for i in range(len(rewards_pa)):
-		# rewards_pa[i] = rewards_ts[pa2ts[i]]
-		rewards_pa[i] = rewards_tmdp[int(pa2tmdp[i])]
+	# for i in range(len(rewards_pa)):
+	# 	# rewards_pa[i] = rewards_ts[pa2ts[i]]
+	# 	rewards_pa[i] = rewards_tmdp[int(pa2tmdp[i])]
+
+	# PA rewards should be assigned according to the Tau MDP projection.
+	# Tau MDP awards should be assigned as the smooth max of of the maximum robustness degree according to a given STL
 	
 	
 	# # Display some important info
@@ -262,7 +289,7 @@ def prep_for_learning(ep_len, m, n, h, init_states, obstacles, pick_up_state, de
 	print('Initial Location  : ' + str(init_states[0]) + ' <---> Region ' + str(init_state[0]))
 	print('Pick-up Location  : ' + str(pick_up_state[0]) + ' <---> Region ' + pick_up)
 	print('Delivery Location : ' + str(delivery_state[0]) + ' <---> Regions ' + delivery)
-	print('Reward Locations  : ' + str(rewards) + ' <---> Regions ' + str(rewards_ts_indexes) + "\n")
+	# print('Reward Locations  : ' + str(rewards) + ' <---> Regions ' + str(rewards_ts_indexes) + "\n")
 	print('State Matrix : ')
 	print(state_mat)
 	print("\n")
@@ -533,6 +560,10 @@ def Q_Learning(Pr_des, eps_unc, eps_unc_learning, N_EPISODES, SHOW_EVERY, LEARN_
 		for i in range(len(energy_pa)):
 			hit.append(0)
 
+		#TODO reevaluate if this works
+		# Reset agent_s
+		agent_s = [i_s[which_pd]]
+
 		ep_traj_pa = [agent_s[which_pd]] # Initialize the episode trajectory
 		ep_rew     = 0         # Initialize the total episode reward
 		disc_ep_rew = 0
@@ -577,8 +608,30 @@ def Q_Learning(Pr_des, eps_unc, eps_unc_learning, N_EPISODES, SHOW_EVERY, LEARN_
 			ep_traj_pa.append(agent_s[which_pd])			
 			current_q = q_table[which_pd][t_ep][prev_state, intended_action]
 			max_future_q = np.amax(q_table[which_pd][t_ep+1][agent_s[which_pd], :])                                          # Find the max future q 	
-			rew_obs      = rewards_pa[which_pd][agent_s[which_pd]] * np.random.binomial(1, 1-rew_uncertainity)   # Observe the rewards of the next state
-			new_q        = (1 - LEARN_RATE) * current_q + LEARN_RATE * (rew_obs + DISCOUNT * max_future_q)
+			# rew_obs      = rewards_pa[which_pd][agent_s[which_pd]] * np.random.binomial(1, 1-rew_uncertainity)   # Observe the rewards of the next state
+			# new_q        = (1 - LEARN_RATE) * current_q + LEARN_RATE * (rew_obs + DISCOUNT * max_future_q)
+
+			# rew_obs should be exp( sign * beta * internal robustness degree of "next" tau-MDP state)
+			beta = 50
+			next_tmdp_s = pa[which_pd].g.nodes()[agent_s[which_pd]][0]
+			sign,rd_phi = stl.rdegree_lse(next_tmdp_s)
+
+			# # temp
+			# foo1,foo2 = stl.rdegree_lse(('r3','r6','r9'), 2)
+
+			# sum from t=tau-1 to end
+			if t_ep < stl.get_tau() - 1:
+				rew_obs = 0
+			else:
+				rew_obs = sign * np.exp(sign * beta * rd_phi) * np.random.binomial(1, 1-rew_uncertainity)
+			# if rd_phi == None:
+			# 	# If rd_phi is none, then this time step is not included in the lse sum
+			# 	rew_obs = 0
+			# else:
+			# 	rew_obs = sign * np.exp(sign * beta * rd_phi) * np.random.binomial(1, 1-rew_uncertainity)
+			# TODO check purpose of rew_uncertain(i)ty
+			new_q = (1 - LEARN_RATE) * current_q + LEARN_RATE * (rew_obs + DISCOUNT * max_future_q)
+
 			q_table[which_pd][t_ep][prev_state, intended_action] = new_q 
 
 			disc_ep_rew += rew_obs * (DISCOUNT ** t_ep)                                                 
@@ -601,6 +654,8 @@ def Q_Learning(Pr_des, eps_unc, eps_unc_learning, N_EPISODES, SHOW_EVERY, LEARN_
 				new_q        = (1 - LEARN_RATE) * current_q + LEARN_RATE * (sample_r + DISCOUNT * max_future_q)
 				q_table[which_pd][sample_t][sample_s, sample_action] = new_q 
 
+		# complete the lse so the rewards make sense
+		ep_rew = sign * (1.0/beta) * np.log(sign * ep_rew)
 		agent_s[which_pd] = agent_upt[which_pd].index(pa2ts[which_pd][agent_s[which_pd]]) # Re-initialize after the episode is finished
 		ep_rewards.append(ep_rew)
 		ep_trajectories_pa.append(ep_traj_pa)
@@ -732,13 +787,18 @@ if __name__ == '__main__':
 	custom_flag = 0          # Task flag, if zero, it is a pick-up delivery mission. If 1, define a new custom task
 	custom_task = '[H^1 r46]^[0,10] * ([H^1 r57]^[0, 10] | [H^1 r24]^[0, 10])  * [H^1 Base1]^[0,10]' # '[H^1 r46]^[0,10] * ([H^1 r57]^[0, 10] | [H^1 r24]^[0, 10])  * [H^1 Base1]^[0,10]'
 	##### System Inputs for Data Prep. #####
-	ep_len = 21 # Episode length
+	# ep_len = 21 # Episode length
 	m = 4       # of rows
 	n = 4       # of columns  8
 	h = 1       # height set to 1 for 2D case
 	ts_size =m*n
 
-	tau = 3
+	# STL constraint
+	stl_expr = 'G[0,20]F[0,2]((x>2)&(x<3)&(y>2)&(y<3))'
+	# stl_expr = 'F[0,20]G[0,2]((x>2)&(x<3)&(y>2)&(y<3))'
+	stl = tmdp_stl(stl_expr)
+	tau = stl.get_tau()
+	ep_len = int(stl.hrz())
 	
 	# Specify initial states and obstacles (row,column,altitude/height)
 	init_states    = [(0,0,0)]                                         # Specify initial states and obstacles (row,column,altitude/height)
@@ -749,7 +809,7 @@ if __name__ == '__main__':
 	# Specify pick-up and delivery locations
 	pick_up_state = []
 	delivery_state = []                                      
-	pick_up_state.append([(3,3,3)])
+	pick_up_state.append([(3,3,0)])
 	# pick_up_state.append([(6,6,0)])                                         
 	delivery_state.append([(1,3,0)])                                         
 	# delivery_state.append([(5,3,0)])                                         
@@ -766,17 +826,18 @@ if __name__ == '__main__':
 	LEARN_FLAG = True  # False # If true learn a new Q table, if False load the previously found one
 	sample_size = 10000 # Specify How Many samples to run
 
-	N_EPISODES = 20000      # of episodes
+	N_EPISODES = 400000      # of episodes
 	SHOW_EVERY = 5000       # Print out the info at every ... episode
-	LEARN_RATE = 0.1
+	# LEARN_RATE = 0.1
+	LEARN_RATE = 0.9
 	DISCOUNT   = 0.95
-	EPS_DECAY  = 1 #0.99989
-	epsilon    = 0.1# exploration trade-off
+	EPS_DECAY  = 0.999985 #0.99989
+	epsilon    = 0.4# exploration trade-off
 	eps_unc    = 0.03 # Uncertainity in actions, real uncertainnity in MDP
 	eps_unc_learning = 0.05 # Overestimated uncertainity used in learning
 	Pr_des     = 0.85 # Minimum desired probability of satisfaction
 
-	n_samples_all = [0, 10] # Running the algorithm for different model based samples, 0 for model free learning
+	n_samples_all = [50] # Running the algorithm for different model based samples, 0 for model free learning
 
 	# Call the function 'prep_for_learning' and 'get_possible_actions' to get required parameters for learning #
 	prep_start_time = timeit.default_timer()
