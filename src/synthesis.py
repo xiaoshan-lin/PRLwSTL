@@ -23,7 +23,14 @@ license_text='''
    :synopsis: Module implements methods for automata-based control policy
    synthesis from TWTL formulae.
 
+   :revisions:
+   * June 21, 2021 by Levi Vande Kamp: 
+      Modified ``ts_times_fsa`` to follow the accepted product automaton definition.
+      See comment in function.
+
 .. moduleauthor:: Cristian Ioan Vasile <cvasile@bu.edu>
+
+.. 
 
 '''
 
@@ -163,7 +170,7 @@ class ControlPathsSet(object):
         return iter(self.paths)
 
 
-def ts_times_fsa(ts, fsa): #FIXME: product automaton convention
+def ts_times_fsa(ts, fsa):
     # Create the product_model
     product_model = Model(directed=True, multi=False)
 
@@ -181,7 +188,9 @@ def ts_times_fsa(ts, fsa): #FIXME: product automaton convention
 
         for ts_next in ts.next_states_of_wts(ts_state, traveling_states = False):
             ts_next_state = ts_next[0]
-            ts_prop = ts.g.node[ts_next_state].get('prop',set())
+            # Modified Jun 21 2021 to use the label of s rather than s' for (s,q) -> (s',q') 
+            # to follow the accepted product automaton definition
+            ts_prop = ts.g.node[ts_state].get('prop',set())
 
             for fsa_next_state in fsa.next_states_of_fsa(fsa_state, ts_prop):
                 next_state = (ts_next_state, fsa_next_state)
@@ -586,14 +595,14 @@ def compute_energy_local(pa, local_set):
     # Update the PA graph with the energy attribute found
     nx.set_node_attributes(pa.g,'energy', energy_dict)
 
-
-def compute_distance(ts):
-    ''' Calculate the distance from a given node to its surrounding transitions
-    giving a true cost of transition. '''
-    node_set = nx.get_node_attributes(ts.g,"position")
-    distance = []
-    for key, (u, v) in node_set.items():
-        temp = math.sqrt((u-obs_loc[0])**2+(v-obs_loc[1])**2)
+# This appears to be broken
+# def compute_distance(ts):
+#     ''' Calculate the distance from a given node to its surrounding transitions
+#     giving a true cost of transition. '''
+#     node_set = nx.get_node_attributes(ts.g,"position")
+#     distance = []
+#     for key, (u, v) in node_set.items():
+#         temp = math.sqrt((u-obs_loc[0])**2+(v-obs_loc[1])**2)
 
 def verify(ts, dfa):
     '''Verifies if all trajectories of a transition system satisfy a temporal
