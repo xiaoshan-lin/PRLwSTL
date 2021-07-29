@@ -42,14 +42,14 @@ from write_files import write_to_land_file, write_to_csv_iter, write_to_csv,\
 from learning import learn_deadlines
 from lomap import Ts
 
-from tmdp_stl import tmdp_stl
+from tmdp_stl import TmdpStl
 
 import IPython
 
 def tau_mdp(ts, ts_weighted, tau):
 
-	def next_mdp_states(state):
-		return ts.g.edge[state].keys()
+	# def next_mdp_states(state):
+	# 	return ts.g.edge[state].keys()
 		# all_states = adj_mat[state]
 		# adj_states = []
 		# for state,cost in enumerate(all_states):
@@ -57,11 +57,11 @@ def tau_mdp(ts, ts_weighted, tau):
 		# 		adj_states.append(state)
 		# return adj_states
 
-	def build_states(past, tau):
+	def build_states(past, ts_edge_dict, tau):
 		if tau == 1:
 			# One tau-MDP state per MDP state
 			return [tuple(past)]
-		next_states = next_mdp_states(past[-1])
+		next_states = ts_edge_dict[past[-1]]
 		if len(next_states) == 0:
 			# no next states. Maybe an obstacle?
 			return []
@@ -74,14 +74,24 @@ def tau_mdp(ts, ts_weighted, tau):
 		# recurse for each state in states
 		more_tmdp_states = []
 		for x in tmdp_states:
-			more_tmdp_states.extend(build_states(x,tau))
+			more_tmdp_states.extend(build_states(x, ts_edge_dict, tau))
 		
 		return more_tmdp_states
 	
+	# Make a dictionary of ts edges and add state for null history that can transition to any state
+	ts.g.add_edges_from([(None,s,{'weight':1}) for s in ts.g.edge.keys()])
+	ts.g.add_edge(None,None, weight=0)
+	ts_weighted.g.add_edges_from([(None,s,{'duration':1,'edge_weight':0}) for s in ts.g.edge.keys()])
+	ts_weighted.g.add_edge(None,None, duration=1, edge_weight=0)
+	ts_edge_dict = {s:ts.g.edge[s].keys() for s in ts.g.edge.keys()}
+	# ts_edge_dict[None] = ts.g.edge.keys() + [None]
+
 	# make list of tau mdp states where each state is represented by a tuple of mdp states
 	tmdp_states = []
-	for s in ts.g.nodes():
-		tmdp_states.extend(build_states([s],tau))
+	for s in ts_edge_dict.keys():
+		tmdp_states.extend(build_states([s], ts_edge_dict, tau))
+
+	# tmdp_states.remove((None,) * tau) # No state should end with a null
 
 	# try and recreate process used in ts.read_from_file() except with tau mdp
 	# There seems to be a ts with only weights 1 and ts_dict with original weights
@@ -89,13 +99,19 @@ def tau_mdp(ts, ts_weighted, tau):
 	tmdp = Ts(directed=True, multi=False)
 	tmdp_weighted = Ts(directed=True, multi=False)
 	tmdp.name = tmdp_weighted.name = "Tau MDP"
-	tmdp.init = tmdp_weighted.init = {('Base1',) * tau:1}
+	tmdp.init = tmdp_weighted.init = {((None,) * (tau-1)) + (ts.init.keys()[0],) :1}
 
 	# create dict of dicts representing edges and attributes of each edge to construct the nx graph from
 	# attributes are based on the mdp edge between the last (current) states in the tau mdp sequence
 	edge_dict = {}
 	edge_dict_weighted = {}
 	for x1 in tmdp_states:
+		# if x1[-1] == None:
+		# 	# tmdp none state should not show up in usage. It is necessary for pa construction.
+		# 	edge_attrs = {s:{None:None} for s in ts.g.nodes()}
+		# 	edge_attrs[None] = {None:None}
+		# 	edge_attrs_weighted = {s:{0:{None:None}} for s in edge_attrs.keys()}
+		# else:
 		edge_attrs = ts.g.edge[x1[-1]]
 		edge_attrs_weighted = ts_weighted.g.edge[x1[-1]]
 		# tmdp states are adjacent if they share the same (offset) history. "current" state transition is implied valid 
@@ -106,8 +122,8 @@ def tau_mdp(ts, ts_weighted, tau):
 			edge_dict_weighted[x1] = {x2:edge_attrs_weighted[x2[-1]][0] for x2 in tmdp_states if x1[1:] == x2[:-1]}
 		else:
 			# Case of tau = 1
-			edge_dict[x1] = {(x2,):edge_attrs[x2] for x2 in next_mdp_states(*x1)}
-			edge_dict_weighted[x1] = {(x2,):edge_attrs_weighted[x2][0] for x2 in next_mdp_states(*x1)}
+			edge_dict[x1] = {(x2,):edge_attrs[x2] for x2 in ts_edge_dict[x1[0]]}
+			edge_dict_weighted[x1] = {(x2,):edge_attrs_weighted[x2][0] for x2 in ts_edge_dict[x1[0]]}
 
 	tmdp.g = nx.from_dict_of_dicts(edge_dict, create_using=nx.MultiDiGraph()) 
 	tmdp_weighted.g = nx.from_dict_of_dicts(edge_dict_weighted, create_using=nx.MultiDiGraph()) 
@@ -155,6 +171,9 @@ def prep_for_learning(ep_len, m, n, h, init_states, obstacles, pick_up_state, de
 	# Variables to recreate
 	# nx.get_edge_attributes(ts_dict.g,'edge_weight')
 	# ts
+	# There seems to be a ts with only weights 1 and ts_dict with original weights
+	# Looks like it will be easiest to create another nx for weights rather than recreate desired output format
+
 	tmdp, tmdp_weighted = tau_mdp(ts, ts_dict, tau)
 
 
@@ -164,13 +183,19 @@ def prep_for_learning(ep_len, m, n, h, init_states, obstacles, pick_up_state, de
 	deliveries = delivery_state[0][0] * n + delivery_state[0][1]
 	pick_up  = str(pick_ups)   # Check later
 	delivery = str(deliveries)
-	tf  = str((ep_len-1)/2) # time bound
 	if custom_flag == 1:
 		phi = custom_task
+		raise Exception("Error: Custom task time bound compatability checking is not yet implemented!")
 	else:
-		phi = '[H^1 r' + pick_up + ']^[0, ' +  tf + '] * [H^1 r' + delivery + ']^[0,' + tf + ']'  # Construc the task according to pickup/delivery )^[0, ' + tf + ']'
+		tf1 = int((ep_len-1)/2) # time bound
+		tf2 = int(ep_len) - tf1 - 1
+		phi = '[H^1 r' + pick_up + ']^[0, ' +  str(tf1) + '] * [H^1 r' + delivery + ']^[0,' + str(tf2) + ']'  # Construc the task according to pickup/delivery )^[0, ' + tf + ']'
 	_, dfa_inf, bdd = twtl.translate(phi, kind=DFAType.Infinity, norm=True) # states and sim. time ex. phi = '([H^1 r47]^[0, 30] * [H^1 r31]^[0, 30])^[0, 30]' 
 	dfa_timecost =  timeit.default_timer() - dfa_start_time # DFAType.Normal for normal, DFAType.Infinity for relaxed
+
+	# add self edge to accepting state
+	# TODO probably don't hardcode the input set
+	dfa_inf.g.add_edge(4,4, {'guard': '(else)', 'input':set([0,1,2,3]), 'label':'(else)', 'weight':0})
 
 	# Get the PA #
 	pa_start_time = timeit.default_timer()
@@ -178,7 +203,11 @@ def prep_for_learning(ep_len, m, n, h, init_states, obstacles, pick_up_state, de
 	nom_weight_dict = {}
 	weight_dict = {}
 	# pa_or = ts_times_fsa(ts, dfa_inf) # Original pa
+	real_init = tmdp.init
+	tmdp.init = {(None,) * tau : 1}
 	pa_or = ts_times_fsa(tmdp, dfa_inf) # Original pa
+	tmdp.init = real_init
+	pa_or.g.remove_node(((None,) * tau, 0))
 	# edges_all = nx.get_edge_attributes(ts_dict.g,'edge_weight')
 	edges_all = nx.get_edge_attributes(tmdp_weighted.g,'edge_weight')
 	max_edge = max(edges_all, key=edges_all.get)
@@ -204,6 +233,9 @@ def prep_for_learning(ep_len, m, n, h, init_states, obstacles, pick_up_state, de
 	for ind in range(len(pa.g.nodes())):
 		energy_pa.append(pa.g.nodes([0])[ind][1].values()[0])
 
+	# TODO: temp
+	tx_func = {k:[z for z in pa.g.edge[k].keys()] for k in pa.g.edge.keys()}
+
 	# projection of pa on ts #
 	init_state = [init_states[0][0] * n + init_states[0][1]]
 	pa2ts = []
@@ -213,6 +245,7 @@ def prep_for_learning(ep_len, m, n, h, init_states, obstacles, pick_up_state, de
 		else:
 			pa2ts.append(init_state[0])
 			if pa.g.nodes()[i][0] == ('Base1',) * tau:
+				# TODO: Get rid of this
 				i_s = i # Agent's initial location in pa
 
 	# project pa on tmdp
@@ -369,7 +402,7 @@ def get_possible_actions(pa_g_nodes, energy_pa, pa2ts, pa_s, pa_t, ep_len, Pr_de
 	#Creating time product MDP
 	agent_upt = []
 	for i in range(len(pa_g_nodes)):
-		if pa_g_nodes[i][1] == 0 or str(pa_g_nodes[i][0][-1]) == 'r'+str(pick_up) : # If the mission changes check here
+		if pa_g_nodes[i][1] == 0 or str(pa_g_nodes[i][0][-1]) == 'r'+str(pick_up) : # If the mission changes check here TODO: fix
 			agent_upt.append(pa2ts[i])
 		else:
 			agent_upt.append([])
@@ -505,6 +538,11 @@ def Q_Learning(Pr_des, eps_unc, eps_unc_learning, N_EPISODES, SHOW_EVERY, LEARN_
 
 	inx = 0
 
+	# Log state sequence and reward
+	trajectory_reward_log = []
+	tr_log_file = '../output/trajectory_reward_log_' + str(n_samples)
+	# truncate file
+	open(tr_log_file, 'w').close()
 
 	QL_start_time = timeit.default_timer()
 
@@ -532,7 +570,8 @@ def Q_Learning(Pr_des, eps_unc, eps_unc_learning, N_EPISODES, SHOW_EVERY, LEARN_
 		q_table.append([])
 		old_q_tables.append([])
 		for t in range(ep_len+1):
-			q_table[i].append(np.random.rand(pa_size[i],9) * 0.001 - 0.001)  # of states x # of actions
+			# Try initializing q table to far negatives. TODO: check this
+			q_table[i].append(np.random.rand(pa_size[i],9) * 0.001 - 1e10)  # of states x # of actions
 			old_q_tables[i].append(q_table[i][t])
 
 	ep_rewards = [] 
@@ -549,8 +588,8 @@ def Q_Learning(Pr_des, eps_unc, eps_unc_learning, N_EPISODES, SHOW_EVERY, LEARN_
 		agent_upt.append(agent_upt_i)
 
 	for episode in range(N_EPISODES):
-		# if episode > 900000: # can be switch to only exploitation after some episode
-		# 	epsilon = 0
+		if episode > 499900: # can be switch to only exploitation after some episode
+			epsilon = 0
 
 		which_pd = np.random.randint(len(energy_pa)) # randomly chosing the pick_up delivery states
 
@@ -562,7 +601,7 @@ def Q_Learning(Pr_des, eps_unc, eps_unc_learning, N_EPISODES, SHOW_EVERY, LEARN_
 
 		#TODO reevaluate if this works
 		# Reset agent_s
-		agent_s = [i_s[which_pd]]
+		# agent_s = [i_s[which_pd]]
 
 		ep_traj_pa = [agent_s[which_pd]] # Initialize the episode trajectory
 		ep_rew     = 0         # Initialize the total episode reward
@@ -578,14 +617,23 @@ def Q_Learning(Pr_des, eps_unc, eps_unc_learning, N_EPISODES, SHOW_EVERY, LEARN_
 			if hit[which_pd] == 0:      					                                                                                    
 				if energy_pa[which_pd][agent_s[which_pd]] == 0:  # Raise the 'hit flag' if the mission is achieved 
 					hit[which_pd] = 1                  # 	
-					agent_s[which_pd] = agent_upt[which_pd].index(pa2ts[which_pd][agent_s[which_pd]]) # 	
+					# TODO Figure out what the following line was supposed to accomplish
+					# agent_s[which_pd] = agent_upt[which_pd].index(pa2ts[which_pd][agent_s[which_pd]]) # 	
 					hit_count[which_pd] = hit_count[which_pd] + 1
 				else:
 					possible_acts = possible_acts_pruned[which_pd]
 					possible_next_states = possible_next_states_pruned[which_pd]
 
 			if len(possible_acts[t_ep][agent_s[which_pd]]) == 0:
-				agent_s[which_pd] = agent_upt[which_pd].index(pa2ts[which_pd][agent_s[which_pd]])
+				bad_jump_state = agent_upt[which_pd].index(pa2ts[which_pd][agent_s[which_pd]])
+				# It seems that there is no possible actions to take. Pruned or not. For example, from (('r10','r7','r7'),4)
+				# This part seemed to jump to FSA state 0
+				# For now I will fake it with tmdp until I know what needs to be done.
+				# TODO fix this
+				bad_jump_state_tup = pa[which_pd].g.nodes()[bad_jump_state]
+				agent_s_tup = pa[which_pd].g.nodes()[agent_s[which_pd]]
+				jump_state_tup = (agent_s_tup[0],bad_jump_state_tup[1])
+				agent_s[which_pd] = pa[which_pd].g.nodes().index(jump_state_tup)
 					
 			if np.random.uniform() > epsilon:                              # Exploit
 				possible_qs = q_table[which_pd][t_ep][agent_s[which_pd], possible_acts[t_ep][agent_s[which_pd]]] # Possible Q values for each action
@@ -612,18 +660,19 @@ def Q_Learning(Pr_des, eps_unc, eps_unc_learning, N_EPISODES, SHOW_EVERY, LEARN_
 			# new_q        = (1 - LEARN_RATE) * current_q + LEARN_RATE * (rew_obs + DISCOUNT * max_future_q)
 
 			# rew_obs should be exp( sign * beta * internal robustness degree of "next" tau-MDP state)
-			beta = 50
+			beta = 5
 			next_tmdp_s = pa[which_pd].g.nodes()[agent_s[which_pd]][0]
-			sign,rd_phi = stl.rdegree_lse(next_tmdp_s)
 
 			# # temp
 			# foo1,foo2 = stl.rdegree_lse(('r3','r6','r9'), 2)
 
-			# sum from t=tau-1 to end
-			if t_ep < stl.get_tau() - 1:
+			# sum from t=tau-2 to end. Looking at next state.
+			if t_ep < stl.get_tau() - 2:
 				rew_obs = 0
 			else:
+				sign,rd_phi = stl.rdegree_lse(next_tmdp_s)
 				rew_obs = sign * np.exp(sign * beta * rd_phi) * np.random.binomial(1, 1-rew_uncertainity)
+
 			# if rd_phi == None:
 			# 	# If rd_phi is none, then this time step is not included in the lse sum
 			# 	rew_obs = 0
@@ -656,12 +705,23 @@ def Q_Learning(Pr_des, eps_unc, eps_unc_learning, N_EPISODES, SHOW_EVERY, LEARN_
 
 		# complete the lse so the rewards make sense
 		ep_rew = sign * (1.0/beta) * np.log(sign * ep_rew)
-		agent_s[which_pd] = agent_upt[which_pd].index(pa2ts[which_pd][agent_s[which_pd]]) # Re-initialize after the episode is finished
+		# Reset state to null history and beginning of FSA
+		tmdp_s = pa[which_pd].g.nodes()[agent_s[which_pd]][0]
+		tau = len(tmdp_s)
+		tmdp_s_new = (None,) * (tau-1) + (tmdp_s[-1],)
+		agent_s_tup_new = (tmdp_s_new,0)
+		agent_s[which_pd] = pa[which_pd].g.nodes().index(agent_s_tup_new)
+
 		ep_rewards.append(ep_rew)
 		ep_trajectories_pa.append(ep_traj_pa)
 		epsilon = epsilon * EPS_DECAY
 		disc_ep_per_task[which_pd].append(disc_ep_rew)
-		ep_per_task[which_pd].append(ep_rew)		
+		ep_per_task[which_pd].append(ep_rew)
+
+		# add this trajectory and reward to log
+		ep_traj_ts = [pa2ts[which_pd][s] for s in ep_traj_pa]
+		trajectory_reward_log.append((ep_traj_ts,ep_rew))
+
 		if (episode+1) % SHOW_EVERY == 0:
 			inx = inx + 1
 			for ind in range(len(energy_pa)):
@@ -671,6 +731,18 @@ def Q_Learning(Pr_des, eps_unc, eps_unc_learning, N_EPISODES, SHOW_EVERY, LEARN_
 				s1.write(ind*N_EPISODES/SHOW_EVERY+inx,1,len(ep_per_task[ind]))
 				s1.write(ind*N_EPISODES/SHOW_EVERY+inx,2,avg_per_task)
 				s1.write(ind*N_EPISODES/SHOW_EVERY+inx,3,disc_avg_per_task)
+
+			# write trajectory reward log to file
+			with open(tr_log_file, 'a') as f:
+				i = episode - SHOW_EVERY + 1
+				traj_len = len(trajectory_reward_log[0][0])
+				frmt = "{:>3},"*traj_len
+				for tr in trajectory_reward_log:
+					tr_str = frmt.format(*tr[0])
+					line = str(i) + '\t' + tr_str + '\t' + '{:.2f}'.format(tr[1]) + '\n'
+					f.write(line)
+					i += 1
+				trajectory_reward_log = []	# reset
 
 		if (episode+1) % SHOW_EVERY == 0:
 			avg_rewards = np.mean(ep_rewards[episode-SHOW_EVERY +1: episode])
@@ -687,14 +759,14 @@ def Q_Learning(Pr_des, eps_unc, eps_unc_learning, N_EPISODES, SHOW_EVERY, LEARN_
 	print('Tajectory at the last episode : ' + str(optimal_policy_ts))
 
 
-	indices=[0,1,2]#, 50000,50001,50001,100000,100001,100002,299997,299998,299999,N_EPISODES-3,N_EPISODES-2,N_EPISODES-1
-	optimal_policy_pas = []
-	for i in range(len(indices)):		
-		optimal_policy_pas.append(ep_trajectories_pa[indices[i]])
-		optimal_policy_ts  = []
-		for ind, val in enumerate(optimal_policy_pas[i]):
-			optimal_policy_ts.append(pa2ts[which_pd][val])
-		#print('Tajectory at the episode ' +  str(indices[i]) + ' : '+str(optimal_policy_ts))
+	# indices=[0,1,2]#, 50000,50001,50001,100000,100001,100002,299997,299998,299999,N_EPISODES-3,N_EPISODES-2,N_EPISODES-1
+	# optimal_policy_pas = []
+	# for i in range(len(indices)):		
+	# 	optimal_policy_pas.append(ep_trajectories_pa[indices[i]])
+	# 	optimal_policy_ts  = []
+	# 	for ind, val in enumerate(optimal_policy_pas[i]):
+	# 		optimal_policy_ts.append(pa2ts[which_pd][val])
+	# 	#print('Tajectory at the episode ' +  str(indices[i]) + ' : '+str(optimal_policy_ts))
 
 	QL_timecost =  timeit.default_timer() - QL_start_time
 	success_ratio = []
@@ -794,9 +866,9 @@ if __name__ == '__main__':
 	ts_size =m*n
 
 	# STL constraint
-	stl_expr = 'G[0,20]F[0,2]((x>2)&(x<3)&(y>2)&(y<3))'
+	stl_expr = 'G[0,20]F[0,2]((x>2)&(x<4)&(y>2)&(y<4))'
 	# stl_expr = 'F[0,20]G[0,2]((x>2)&(x<3)&(y>2)&(y<3))'
-	stl = tmdp_stl(stl_expr)
+	stl = TmdpStl(stl_expr)
 	tau = stl.get_tau()
 	ep_len = int(stl.hrz())
 	
@@ -826,13 +898,14 @@ if __name__ == '__main__':
 	LEARN_FLAG = True  # False # If true learn a new Q table, if False load the previously found one
 	sample_size = 10000 # Specify How Many samples to run
 
-	N_EPISODES = 400000      # of episodes
+	N_EPISODES = 500000      # of episodes
 	SHOW_EVERY = 5000       # Print out the info at every ... episode
 	# LEARN_RATE = 0.1
-	LEARN_RATE = 0.9
-	DISCOUNT   = 0.95
-	EPS_DECAY  = 0.999985 #0.99989
-	epsilon    = 0.4# exploration trade-off
+	LEARN_RATE = 0.1
+	DISCOUNT   = 0.999
+	# EPS_DECAY  = 0.999995 #0.99989
+	EPS_DECAY = 1
+	epsilon    = 0.3# exploration trade-off
 	eps_unc    = 0.03 # Uncertainity in actions, real uncertainnity in MDP
 	eps_unc_learning = 0.05 # Overestimated uncertainity used in learning
 	Pr_des     = 0.85 # Minimum desired probability of satisfaction
