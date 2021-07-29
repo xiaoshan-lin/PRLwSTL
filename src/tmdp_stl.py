@@ -1,4 +1,71 @@
-class tmdp_stl:
+
+import lomap
+import networkx as nx
+
+class Tmdp(lomap.Ts):
+    def __init__(self, ts, tau):
+        lomap.Ts.__init__(directed=True, multi=False)
+
+        # Make a dictionary of ts edges and add state for null history that can transition to any state
+        ts_edge_dict = {s:ts.g.edge[s].keys() for s in ts.g.edge.keys()}
+        ts_edge_dict[None] = ts.g.edge.keys() + [None]
+
+        # make list of tau mdp states where each state is represented by a tuple of mdp states
+        tmdp_states = []
+        for s in ts_edge_dict.keys():
+            tmdp_states.extend(build_states([s], ts_edge_dict, tau))
+
+        tmdp_states.remove((None,) * tau) # No state should end with a null
+
+        # try and recreate process used in ts.read_from_file() except with tau mdp
+        self.name = "Tau MDP"
+        self.init = {((None,) * (tau-1)) + (ts.init.keys()[0],) :1}
+
+        # create dict of dicts representing edges and attributes of each edge to construct the nx graph from
+        # attributes are based on the mdp edge between the last (current) states in the tau mdp sequence
+        edge_dict = {}
+        for x1 in tmdp_states:
+            edge_attrs = ts.g.edge[x1[-1]]
+            # tmdp states are adjacent if they share the same (offset) history. "current" state transition is implied valid 
+            # based on the set of names created
+            if tau > 1:
+                #TODO use next_mdp_states instead of conditional
+                edge_dict[x1] = {x2:edge_attrs[x2[-1]] for x2 in tmdp_states if x1[1:] == x2[:-1]}
+            else:
+                # Case of tau = 1
+                edge_dict[x1] = {(x2,):edge_attrs[x2] for x2 in ts_edge_dict[x1[0]]}
+
+        self.g = nx.from_dict_of_dicts(edge_dict, create_using=nx.MultiDiGraph()) 
+
+        # add node attributes based on last state in sequence
+        for n in self.g.nodes():
+            self.g.node[n] = ts.g.node[n[-1]]
+
+
+	def build_states(self, past, ts_edge_dict, tau):
+		if tau == 1:
+			# One tau-MDP state per MDP state
+			return [tuple(past)]
+		next_states = ts_edge_dict[past[-1]]
+		if len(next_states) == 0:
+			# no next states. Maybe an obstacle?
+			return []
+		tmdp_states = [past + [ns] for ns in next_states]
+		if len(tmdp_states[0]) == tau:
+			# each tau-MDP state has 'tau' MDP states
+			# make each state immutable
+			return [tuple(s) for s in tmdp_states]
+		
+		# recurse for each state in states
+		more_tmdp_states = []
+		for x in tmdp_states:
+			more_tmdp_states.extend(self.build_states(x, ts_edge_dict, tau))
+		
+		return more_tmdp_states
+
+
+
+class TmdpStl:
     def __init__(self, stl_expr, ts_sig_dict = None):
         # stl_expr is format
         # F[t0,tn](x>2&x<3&y>2&y<3)
@@ -11,6 +78,9 @@ class tmdp_stl:
         self.ts_sig_dict = ts_sig_dict
 
     def rdegree_lse(self, tmdp_s):
+
+        if None in tmdp_s:
+            raise Exception("State does not have complete history. Cannot compute robustness degree of incomplete state.")
 
         # check cache
         try:
