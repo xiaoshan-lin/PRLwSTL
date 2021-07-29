@@ -170,9 +170,12 @@ class ControlPathsSet(object):
         return iter(self.paths)
 
 
-def ts_times_fsa(ts, fsa):
+def ts_times_fsa(ts, fsa, model = None):
     # Create the product_model
-    product_model = Model(directed=True, multi=False)
+    if model == None:
+        product_model = Model(directed=True, multi=False)
+    else:
+        product_model = model
 
     init_state = (ts.init.keys()[0], fsa.init.keys()[0])
     product_model.init[init_state] = 1
