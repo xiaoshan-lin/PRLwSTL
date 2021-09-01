@@ -18,8 +18,7 @@ class Fmdp(lomap.Ts):
         self.mdp = mdp
         self.stl_expr = stl_expr
 
-        # TODO: final
-
+        self.sig_dict = mdp_sig_dict
         self.fmdp_stl = FmdpStl(stl_expr, mdp_sig_dict)
 
         self.build_states()
@@ -50,7 +49,7 @@ class Fmdp(lomap.Ts):
             flags = fmdp_s[1]
             edge_attr_dict = mdp_tx_dict[mdp_s]                 # dict of attrs keyed by next state
             next_mdp_s = edge_attr_dict.keys()                  # list of next states
-            next_flags = [self.fmdp_stl.flag_update(flags, mdp_s) for mdp_s in next_mdp_s]   # next flag tuples
+            next_flags = [self.fmdp_stl.flag_update(flags, s) for s in next_mdp_s]   # next flag tuples
             # next_fmdp_s = {mf:next_mdp_s_dict[m] for mf in zip(next_mdp_s, next_flags)}
             for m,f in zip(next_mdp_s, next_flags):
                 edge_list.append((fmdp_s, (m,f), edge_attr_dict[m]))
@@ -60,11 +59,25 @@ class Fmdp(lomap.Ts):
         self.g.add_edges_from(edge_list)
         # self.g.add_edge()
 
+    def reward(self, fmdp_s, beta):
+        temporal_op = self.fmdp_stl.get_outer_temporal_op()
+        if temporal_op == 'F':
+            r = np.exp(beta * self.fmdp_stl.sat(fmdp_s))
+        elif temporal_op == 'G':
+            r = -1 * np.exp(-1 * beta * self.fmdp_stl.sat(fmdp_s))
+            positive_offset = np.exp(0)
+            r += positive_offset
+        return r
+
     def get_hrz(self):
         return self.fmdp_stl.get_hrz()
 
     def get_mdp_state(self, fmdp_s):
         return fmdp_s[0]
+
+    def get_tau(self):
+        # In the case of fmdp, this is max(tau_i)
+        return int(max(self.fmdp_stl.get_tau()))
 
         
 
@@ -104,9 +117,14 @@ class FmdpStl:
         # Get hrz (tau_i) and extract predicate of each 
         self.tau_i_list = []
         self.pred_i_list = []
+        self.hrz_i_list = []
         for phi in self.phi_i_list:
             end = phi.index(']')
-            self.tau_i_list.append(float(phi[4:end]))
+            hrz = float(phi[4:end])
+            if hrz % 1 != 0:
+                raise Exception("Non integer in STL expression. Is this allowed?")
+            self.hrz_i_list.append(int(hrz))
+            self.tau_i_list.append(int(hrz) + 1)
             self.pred_i_list.append(phi[end+1:])
 
         self.sig_dict = mdp_sig_dict
@@ -120,10 +138,13 @@ class FmdpStl:
     def get_hrz(self):
         end = self.big_phi.index(']')
         b = int(self.big_phi[4:end])
-        return int(b + max(self.get_tau()))
+        return int(b + max(self.hrz_i_list))
 
     def set_mdp_sig_dict(self, mdp_sig_dict):
         self.sig_dict = mdp_sig_dict
+
+    def get_outer_temporal_op(self):
+        return self.big_phi[0]
 
     def flag_update(self, this_flags, next_mdp_s):
         flags = this_flags
@@ -143,10 +164,10 @@ class FmdpStl:
             if t_op == 'F' and satisfies:
                 next_flags.append(1.0)
             elif t_op == 'F' and not satisfies:
-                f = max((flag - 1) / (tau - 1), 0.0)
+                f = max(flag - (1. / (tau - 1.)), 0.0)
                 next_flags.append(f)
             elif t_op == 'G' and satisfies:
-                f = min((flag + 1) / (tau - 1), 1.0)
+                f = min(flag + (1. / (tau - 1.)), 1.0)
                 next_flags.append(f)
             elif t_op == 'G' and not satisfies:
                 next_flags.append(0.0)
@@ -171,7 +192,7 @@ class FmdpStl:
             end = phi.index(']') + 1
             predicate = phi[end:]
             satisfies = self.sat_predicate_expr(sig, predicate)
-            flags = fmdp_s.flags
+            flags = fmdp_s[1]
             flag_i = flags[i]
 
             if phi[0] == 'F':
