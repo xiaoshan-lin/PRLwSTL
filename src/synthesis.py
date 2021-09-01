@@ -170,7 +170,7 @@ class ControlPathsSet(object):
         return iter(self.paths)
 
 
-def ts_times_fsa(ts, fsa, model = None):
+def ts_times_fsa(ts, fsa, model = None):        # NOTE: The FSA update uses the lable of s' rather than s. 
     # Create the product_model
     if model == None:
         product_model = Model(directed=True, multi=False)
@@ -191,9 +191,7 @@ def ts_times_fsa(ts, fsa, model = None):
 
         for ts_next in ts.next_states_of_wts(ts_state, traveling_states = False):
             ts_next_state = ts_next[0]
-            # Modified Jun 21 2021 to use the label of s rather than s' for (s,q) -> (s',q') 
-            # to follow the accepted product automaton definition
-            ts_prop = ts.g.node[ts_state].get('prop',set())
+            ts_prop = ts.g.node[ts_next_state].get('prop',set())
 
             for fsa_next_state in fsa.next_states_of_fsa(fsa_state, ts_prop):
                 next_state = (ts_next_state, fsa_next_state)
