@@ -1,6 +1,8 @@
 #from create_environment import create_ts, update_obs_mat, update_adj_mat_3D,\
 #								create_input_file, update_adj_mat_3D
 
+from __future__ import division # dividing two integers produces a float
+
 import create_environment as ce
 import timeit, time
 import lomap
@@ -9,13 +11,29 @@ import synthesis as synth
 import networkx as nx
 from dfa import DFAType
 import copy
+import numpy as np
+import random
 from tmdp_stl import TmdpStl
 from product_automaton import AugPa
 from fmdp_stl import Fmdp
 
 
-AUG_MDP_TYPE = 'FLAG-MDP'
-#AUG_MDP_TYPE = 'TAU-MDP'
+
+# AUG_MDP_TYPE = 'FLAG-MDP'
+AUG_MDP_TYPE = 'TAU-MDP'
+
+NORMAL_COLOR = '\033[0m'
+
+COLOR_DICT = {
+    'pi epsilon go' : '\033[38;5;3m',   # yellow
+    'explore'       : '\033[38;5;4m',   # blue
+    'exploit'       : '\033[38;5;2m',   # green
+    'intended'      : '\033[49m',       # no highlight
+    'unintended'    : '\033[48;5;1m'    # red highlight
+}
+
+
+
 
 def tau_mdp(ts, ts_weighted, tau):
 
@@ -142,15 +160,12 @@ def build_environment(m, n, h, init_state, pick_up, delivery, custom_task, stl_e
     # create dictionary mapping mdp states to a position signal for use in satisfaction calculation
     # apply offset so pos is middle of region
     state_to_pos = dict()
-    dims = ['y', 'x', 'z']
+    dims = ['x', 'y', 'z']
     for s in ts.g.nodes():
-        if s == 'Base1':
-            state_to_pos[s] = {d:c + 0.5 for d,c in zip(dims,init_state)}
-        else:
-            num = int(s[1:])
-            #TODO: 3rd dim?
-            pos = ((num // n) + 0.5, (num % n) + 0.5, 0.5)
-            state_to_pos[s] = {d:p for d,p in zip(dims, pos)}
+        num = int(s[1:])
+        #TODO: 3rd dim?
+        pos = ((num // n) + 0.5, (num % n) + 0.5, 0.5)
+        state_to_pos[s] = {d:p for d,p in zip(dims, pos)}
     # stl.set_ts_sig_dict(state_to_pos)
     
     ts_timecost =  timeit.default_timer() - ts_start_time
@@ -167,7 +182,7 @@ def build_environment(m, n, h, init_state, pick_up, delivery, custom_task, stl_e
     if AUG_MDP_TYPE == 'FLAG-MDP':
         aug_mdp = Fmdp(ts, stl_expr, state_to_pos)
     elif AUG_MDP_TYPE == 'TAU-MDP':
-        aug_mdp = None
+        # aug_mdp = Tmdp()
         # aug_mdp.init = {(None,) * tau : 1}
         raise Exception("Tau MDP not implemented")
     else:
@@ -194,7 +209,7 @@ def build_environment(m, n, h, init_state, pick_up, delivery, custom_task, stl_e
     dfa_timecost =  timeit.default_timer() - dfa_start_time # DFAType.Normal for normal, DFAType.Infinity for relaxed
 
     # add self edge to accepting state
-    # TODO probably don't hardcode the input set
+    # TODO probably don't hardcode the input set. see dfa_inf.alphabet
     dfa_inf.g.add_edge(4,4, {'guard': '(else)', 'input':set([0,1,2,3]), 'label':'(else)', 'weight':0})
 
     # Get the PA #
@@ -205,7 +220,7 @@ def build_environment(m, n, h, init_state, pick_up, delivery, custom_task, stl_e
     # pa_or = ts_times_fsa(ts, dfa_inf) # Original pa
     # real_init = tmdp.init
     # pa_or = synth.ts_times_fsa(tmdp, dfa_inf) # Original pa
-    pa_or = AugPa(aug_mdp, dfa_inf)
+    pa_or = AugPa(aug_mdp, dfa_inf, ep_len)
     # tmdp.init = real_init
     # pa_or.g.remove_node(((None,) * tau, 0))
 
@@ -256,15 +271,169 @@ def build_environment(m, n, h, init_state, pick_up, delivery, custom_task, stl_e
 
     return pa
 
-def Q_learning(pa, eps_unc, learn_rate, discount, eps_decay, epsilon, samples):
+def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, samples):
 
     # Log state sequence and reward
     trajectory_reward_log = []
-    tr_log_file = '../output/trajectory_reward_log_' + str(n_samples)
+    mdp_traj_log = ''
+    tr_log_file = '../output/trajectory_reward_log.txt'
+    mdp_log_file = '../output/mdp_trajectory_log.txt'
+    q_table_file = '../output/live_q_table.txt'
+    log = True
     # truncate file
     open(tr_log_file, 'w').close()
+    open(mdp_log_file, 'w').close()
 
-    return False
+    # Count trajectories that reach an accepting state (pass the TWTL task)
+    twtl_pass_count = 0
+
+    # initialize Q table
+    init_val = -10
+    time_steps = pa.get_hrz()
+    qtable = [{} for _ in range(time_steps+1)]
+    for i,_ in enumerate(qtable):
+        qtable[i] = {p:{} for p in pa.get_states()}
+        for p in qtable[i]:
+            qtable[i][p] = {q:init_val + np.random.normal(0,0.0001) for q in pa.g.neighbors(p)}
+
+    # initialize optimal policy pi on pruned time product automaton
+    pi = [{} for _ in range(time_steps)]
+    for t,_ in enumerate(pi):
+        for p in pa.pruned_time_actions[t]:
+            if pa.pruned_time_actions[t][p] != []:
+                # initialize with a neighbor in the pruned space
+                pi[t][p] = max(pa.pruned_time_actions[t][p], key=qtable[t][p].get)
+            else:
+                # Empty action set. No actions available in the pruned time pa.
+                pi[t][p] = None
+        # pi[t] = {p:max(qtable[t][p], key=qtable[t][p].get) for p in pa.pruned_time_actions[t]}
+
+    # initial state,time
+    z,t_init,init_traj = pa.initial_state_and_time()
+    if log:
+        trajectory_reward_log.extend(init_traj)
+        init_mdp_traj = [pa.get_mdp_state(z) for z in init_traj]
+        for x in init_mdp_traj:
+            mdp_traj_log += '{:<4}'.format(x)
+    # z = pa.init.keys()[0]
+
+    # Loop for number of training episodes
+    for _ in range(episodes):
+        for t in range(t_init, time_steps):
+
+            next_states = pa.pruned_time_actions[t][z]
+            if next_states == []:
+                # Pruned action set is empty, choose action with lowest energy
+                probable_z = pa.pi_eps_go[t][z]
+                action_chosen_by = "pi epsilon go"
+            else:
+                if np.random.uniform() < epsilon:   # Explore
+                    probable_z = random.choice(next_states)
+                    action_chosen_by = "explore"
+                else:                               # Exploit
+                    probable_z = pi[t][z]
+                    action_chosen_by = "exploit"
+            
+            # Take the action, result may depend on uncertainty
+            next_z = pa.take_action(z, probable_z, eps_unc)
+            if next_z == probable_z:
+                action_result = 'intended'
+            else:
+                action_result = 'unintended'
+
+            reward = pa.reward(next_z)
+            cur_q = qtable[t][z][next_z]
+            # TODO on the last time step, next z should probably be the reset version
+            future_qs = qtable[(t+1) % (time_steps + 1)][next_z] # TODO: evaluate if a modulus is the correct approach
+            max_future_q = max(future_qs.values())
+
+            # Update q value
+            new_q = (1 - learn_rate) * cur_q + learn_rate * (reward + discount * max_future_q)
+            qtable[t][z][next_z] = new_q
+
+            # Update optimal policy
+            if next_states != []:
+                pi[t][z] = max(next_states, key=qtable[t][z].get)
+
+            if log:
+                trajectory_reward_log.append(next_z)
+                mdp_str = COLOR_DICT[action_result] + COLOR_DICT[action_chosen_by] + '{:<4}'.format(pa.get_mdp_state(next_z))
+                mdp_traj_log += mdp_str
+
+            z = next_z
+
+        if pa.is_accepting_state(z):
+            twtl_pass_count += 1
+
+        # An episode has completed. The pa state must be reset while preserving the aug_mdp state.
+        z, init_traj = pa.new_ep_state(z)
+
+        if log:
+            with open(tr_log_file, 'a') as log_file:
+                log_file.write(str(trajectory_reward_log))
+                log_file.write('\n')
+            with open(mdp_log_file, 'a') as log_file:
+                log_file.write(str(mdp_traj_log))
+                log_file.write('\n')
+            trajectory_reward_log = init_traj[:]
+            init_mdp_traj = [pa.get_mdp_state(z) for z in init_traj]
+            mdp_traj_log = ''
+            for x in init_mdp_traj:
+                mdp_traj_log += '{:<4}'.format(x)
+
+            # write formatted q table to file
+            # with open(q_table_file, 'w') as f:
+            #     # time header
+            #     f.write('{:<50}'.format(""))
+            #     f.write(('{:<6}' * len(qtable)).format(*list(range(len(qtable)))))
+            #     f.write('\n')
+
+            #     for p,q_dict in qtable[0].items():
+            #         for q,val in q_dict.items():
+            #             f.write
+            #     for i,_ in enumerate qtable:
+            #         f.write('\n\nt = {}\n'.format(i))
+
+    print("TWTL success rate: {} / {} = {}".format(twtl_pass_count, episodes, twtl_pass_count/episodes))
+
+    return pi
+
+def test_policy(pi, pa, eps_unc, iters):
+
+    print('Testing optimal policy with {} iterations'.format(iters))
+
+    z,t_init,init_traj = pa.initial_state_and_time((('r7', (0,)), 0))
+    time_steps = pa.get_hrz()
+    traj = []
+    traj.extend(init_traj)
+
+    # count TWTL satsifactions
+    twtl_pass_count = 0
+
+    for _ in range(iters):
+        for t in range(t_init, time_steps):
+            intended_z = pi[t][z]
+            if intended_z == None:
+                intended_z = pa.pi_eps_go[t][z]
+            
+            # take action
+            next_z = pa.take_action(z, intended_z, eps_unc)
+
+            z = next_z
+
+        if pa.is_accepting_state(z):
+            twtl_pass_count += 1
+
+        z, init_traj = pa.new_ep_state(z)
+
+
+    print("TWTL success rate: {} / {} = {}".format(twtl_pass_count, iters, twtl_pass_count/iters))
+
+    #TODO this
+    # count STL satisfaction
+    # See what else she wants
+
+
 
 
 if __name__ == '__main__':
@@ -295,7 +464,7 @@ if __name__ == '__main__':
     LEARN_FLAG = True  # False # If true learn a new Q table, if False load the previously found one
     sample_size = 10000 # Specify How Many samples to run
 
-    N_EPISODES = 500000      # of episodes
+    num_episodes = 100000      # of episodes
     SHOW_EVERY = 5000       # Print out the info at every ... episode
     # LEARN_RATE = 0.1
     LEARN_RATE = 0.1
@@ -305,7 +474,7 @@ if __name__ == '__main__':
     epsilon    = 0.3# exploration trade-off
     eps_unc    = 0.03 # Uncertainity in actions, real uncertainnity in MDP
     eps_unc_learning = 0.05 # Overestimated uncertainity used in learning
-    des_prob     = 0.85 # Minimum desired probability of satisfaction
+    des_prob     = 0.86 # Minimum desired probability of satisfaction
 
     n_samples = 50 # Running the algorithm for different model based samples, 0 for model free learning
 
@@ -313,8 +482,29 @@ if __name__ == '__main__':
 
     pa = build_environment(length, width, height, init_state, pick_up_state, delivery_state, None, stl_expr)
     pa.prune_actions(eps_unc, des_prob)
-    optimal_policy = Q_learning(pa, eps_unc, LEARN_RATE, DISCOUNT, EPS_DECAY, epsilon, n_samples)
+    pi = Q_learning(pa, num_episodes, eps_unc, LEARN_RATE, DISCOUNT, EPS_DECAY, epsilon, n_samples)
 
+    # test policy
+    test_policy(pi, pa, eps_unc, 500)
+
+    # generate trajectory
+    # z,t_init,init_traj = pa.initial_state_and_time((('r7', (0,)), 0))
+    # time_steps = pa.get_hrz()
+    # traj = []
+    # traj.extend(init_traj)
+    # for t in range(t_init, time_steps):
+    #     next_z = pi[t][z]
+    #     traj.append(next_z)
+    # print(traj)
+
+
+    pi_file = '../output/optimal_policy.txt'
+    with open(pi_file, 'w') as f:
+        fmt = '{:<23} ||  ' + '{:>22}' * len(pi) + '\n'
+        f.write(fmt.format('', *list(range(len(pi)))))
+        for s in sorted(pi[0].keys()):
+            s2 = [pi_t[s] for pi_t in pi]
+            f.write(fmt.format(s, *s2))
 
     # for ind_p in range(len(pick_up_state)):
     #     for ind in range(len(delivery_state)):
@@ -337,5 +527,5 @@ if __name__ == '__main__':
             # possible_next_states_pruned.append(possible_next_states_time_included_pruned_i)
             # act_num.append(act_num_i)
 
-    prep_timecost =  timeit.default_timer() - prep_start_time
-    print('Total time for data prep. : ' + str(prep_timecost) + ' seconds \n')
+    # prep_timecost =  timeit.default_timer() - prep_start_time
+    # print('Total time for data prep. : ' + str(prep_timecost) + ' seconds \n')
