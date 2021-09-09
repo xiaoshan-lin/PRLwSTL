@@ -79,6 +79,22 @@ class Fmdp(lomap.Ts):
         # In the case of fmdp, this is max(tau_i)
         return int(max(self.fmdp_stl.get_tau()))
 
+    def reset_init(self):
+        pass
+
+    def get_state_to_remove(self):
+        pass
+
+    def get_mdp(self):
+        return self.mdp
+
+    def new_ep_state(self, fmdp_s):
+        # TODO: reset flag?
+        return fmdp_s
+
+    def sat(self, fmdp_s):
+        return self.fmdp_stl.sat(fmdp_s)
+
         
 
 class FmdpStl:

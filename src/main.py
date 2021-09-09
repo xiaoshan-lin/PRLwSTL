@@ -13,14 +13,14 @@ from dfa import DFAType
 import copy
 import numpy as np
 import random
-from tmdp_stl import TmdpStl
+from tmdp_stl import Tmdp
 from product_automaton import AugPa
 from fmdp_stl import Fmdp
 
 
 
-# AUG_MDP_TYPE = 'FLAG-MDP'
-AUG_MDP_TYPE = 'TAU-MDP'
+AUG_MDP_TYPE = 'FLAG-MDP'
+# AUG_MDP_TYPE = 'TAU-MDP'
 
 NORMAL_COLOR = '\033[0m'
 
@@ -182,9 +182,7 @@ def build_environment(m, n, h, init_state, pick_up, delivery, custom_task, stl_e
     if AUG_MDP_TYPE == 'FLAG-MDP':
         aug_mdp = Fmdp(ts, stl_expr, state_to_pos)
     elif AUG_MDP_TYPE == 'TAU-MDP':
-        # aug_mdp = Tmdp()
-        # aug_mdp.init = {(None,) * tau : 1}
-        raise Exception("Tau MDP not implemented")
+        aug_mdp = Tmdp(ts, stl_expr, state_to_pos)
     else:
         raise Exception("invalid AUG_MDP_TYPE")
 
@@ -214,9 +212,9 @@ def build_environment(m, n, h, init_state, pick_up, delivery, custom_task, stl_e
 
     # Get the PA #
     pa_start_time = timeit.default_timer()
-    alpha = 1       # with alpha = 1, all transitions are weighted equally in energy calculation
-    nom_weight_dict = {}
-    weight_dict = {}
+    # alpha = 1       # with alpha = 1, all transitions are weighted equally in energy calculation
+    # nom_weight_dict = {}
+    # weight_dict = {}
     # pa_or = ts_times_fsa(ts, dfa_inf) # Original pa
     # real_init = tmdp.init
     # pa_or = synth.ts_times_fsa(tmdp, dfa_inf) # Original pa
@@ -225,23 +223,23 @@ def build_environment(m, n, h, init_state, pick_up, delivery, custom_task, stl_e
     # pa_or.g.remove_node(((None,) * tau, 0))
 
     # TODO: incorporate this into Pa class
-    edges_all = nx.get_edge_attributes(ts_dict.g,'edge_weight')
+    # edges_all = nx.get_edge_attributes(ts_dict.g,'edge_weight')
     # edges_all = nx.get_edge_attributes(tmdp_weighted.g,'edge_weight')
-    max_edge = max(edges_all, key=edges_all.get)
-    norm_factor = edges_all[max_edge]
-    for pa_edge in pa_or.g.edges():
-        mdp_s_1 = pa_or.get_mdp_state(pa_edge[0])
-        mdp_s_2 = pa_or.get_mdp_state(pa_edge[1])
-        edge = (mdp_s_1, mdp_s_2, 0)
-        nom_weight_dict[pa_edge] = edges_all[edge]/norm_factor
-    nx.set_edge_attributes(pa_or.g, 'edge_weight', nom_weight_dict)
-    nx.set_edge_attributes(pa_or.g, 'weight', 1)
+    # max_edge = max(edges_all, key=edges_all.get)
+    # norm_factor = edges_all[max_edge]
+    # for pa_edge in pa_or.g.edges():
+    #     mdp_s_1 = pa_or.get_mdp_state(pa_edge[0])
+    #     mdp_s_2 = pa_or.get_mdp_state(pa_edge[1])
+    #     edge = (mdp_s_1, mdp_s_2, 0)
+    #     nom_weight_dict[pa_edge] = edges_all[edge]/norm_factor
+    # nx.set_edge_attributes(pa_or.g, 'edge_weight', nom_weight_dict)
+    # nx.set_edge_attributes(pa_or.g, 'weight', 1)
     pa = copy.deepcopy(pa_or)	      # copy the pa
-    time_weight = nx.get_edge_attributes(pa.g,'weight')
-    edge_weight = nx.get_edge_attributes(pa.g,'edge_weight')
-    for pa_edge in pa.g.edges():
-        weight_dict[pa_edge] = alpha*time_weight[pa_edge] + (1-alpha)*edge_weight[pa_edge]
-    nx.set_edge_attributes(pa.g, 'new_weight', weight_dict)     # new_weight is used in energy computation
+    # time_weight = nx.get_edge_attributes(pa.g,'weight')
+    # edge_weight = nx.get_edge_attributes(pa.g,'edge_weight')
+    # for pa_edge in pa.g.edges():
+    #     weight_dict[pa_edge] = alpha*time_weight[pa_edge] + (1-alpha)*edge_weight[pa_edge]
+    # nx.set_edge_attributes(pa.g, 'new_weight', weight_dict)     # new_weight is used in energy computation
     pa_timecost =  timeit.default_timer() - pa_start_time
 
     # Compute the energy of the states #
@@ -278,7 +276,7 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
     mdp_traj_log = ''
     tr_log_file = '../output/trajectory_reward_log.txt'
     mdp_log_file = '../output/mdp_trajectory_log.txt'
-    q_table_file = '../output/live_q_table.txt'
+    # q_table_file = '../output/live_q_table.txt'
     log = True
     # truncate file
     open(tr_log_file, 'w').close()
@@ -394,7 +392,7 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
             #     for i,_ in enumerate qtable:
             #         f.write('\n\nt = {}\n'.format(i))
 
-    print("TWTL success rate: {} / {} = {}".format(twtl_pass_count, episodes, twtl_pass_count/episodes))
+    # print("TWTL success rate: {} / {} = {}".format(twtl_pass_count, episodes, twtl_pass_count/episodes))
 
     return pi
 
@@ -402,13 +400,17 @@ def test_policy(pi, pa, eps_unc, iters):
 
     print('Testing optimal policy with {} iterations'.format(iters))
 
-    z,t_init,init_traj = pa.initial_state_and_time((('r7', (0,)), 0))
+    # z,t_init,init_traj = pa.initial_state_and_time(((None,None,'r7'), 0))
+    # z,t_init,init_traj = pa.initial_state_and_time((('r7', (0,)), 0))
+    z,t_init,init_traj = pa.initial_state_and_time()
     time_steps = pa.get_hrz()
     traj = []
     traj.extend(init_traj)
 
     # count TWTL satsifactions
     twtl_pass_count = 0
+    stl_sat_count = 0
+    total_count = 0
 
     for _ in range(iters):
         for t in range(t_init, time_steps):
@@ -419,6 +421,10 @@ def test_policy(pi, pa, eps_unc, iters):
             # take action
             next_z = pa.take_action(z, intended_z, eps_unc)
 
+            total_count += 1
+            if pa.sat(next_z):
+                stl_sat_count += 1
+
             z = next_z
 
         if pa.is_accepting_state(z):
@@ -428,10 +434,7 @@ def test_policy(pi, pa, eps_unc, iters):
 
 
     print("TWTL success rate: {} / {} = {}".format(twtl_pass_count, iters, twtl_pass_count/iters))
-
-    #TODO this
-    # count STL satisfaction
-    # See what else she wants
+    print("STL success rate: {}".format(stl_sat_count/total_count))
 
 
 
@@ -482,7 +485,11 @@ if __name__ == '__main__':
 
     pa = build_environment(length, width, height, init_state, pick_up_state, delivery_state, None, stl_expr)
     pa.prune_actions(eps_unc, des_prob)
+
+    timer = timeit.default_timer()
     pi = Q_learning(pa, num_episodes, eps_unc, LEARN_RATE, DISCOUNT, EPS_DECAY, epsilon, n_samples)
+    qlearning_time = timeit.default_timer() - timer
+    print('learning time: {}'.format(qlearning_time))
 
     # test policy
     test_policy(pi, pa, eps_unc, 500)

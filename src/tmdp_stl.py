@@ -1,48 +1,82 @@
 
 import lomap
 import networkx as nx
+import numpy as np
 
 class Tmdp(lomap.Ts):
-    def __init__(self, ts, tau):
-        lomap.Ts.__init__(directed=True, multi=False)
+    def __init__(self, mdp, stl_expr, mdp_sig_dict):
+        lomap.Ts.__init__(self, directed=True, multi=False)
 
-        # Make a dictionary of ts edges and add state for null history that can transition to any state
-        ts_edge_dict = {s:ts.g.edge[s].keys() for s in ts.g.edge.keys()}
-        ts_edge_dict[None] = ts.g.edge.keys() + [None]
+        self.name = 'Tau MDP'
+        self.mdp = mdp
+        self.stl_expr = stl_expr
+        self.sig_dict = mdp_sig_dict
+        self.tmdp_stl = TmdpStl(stl_expr, mdp_sig_dict)
+        self.tau = self.tmdp_stl.get_tau()
+
+        #add state for null history that can transition to any state
+        for s in self.mdp.g.nodes() + [None]:
+            self.mdp.g.add_edge(None, s, new_weight=1, weight=1)
+
+        # make mdp init at that state for the sake of building
+        real_mdp_init = self.mdp.init
+        self.mdp.init = {None:1}
+
+        self.build_states()
+        self.build_transitions()
+
+        # reset mdp init
+        self.mdp.init = real_mdp_init
+
+        # When the pa is created, we want states with null history. Must start with all None.
+        self.temp_init_state = tuple([None] * self.tau)
+        self.init = {self.temp_init_state: 1}
+
+
+    def get_hrz(self):
+        return self.tmdp_stl.hrz()
+
+    def get_tau(self):
+        return self.tau
+
+    def get_mdp_state(self, tmdp_s):
+        if type(tmdp_s) != tuple or len(tmdp_s) != self.tau:
+            raise Exception('invalid tau mdp state: {}'.format(tmdp_s))
+        # return last state in sequence
+        return tmdp_s[-1]
+
+    def get_mdp(self):
+        return self.mdp
+
+    def new_ep_state(self, tmdp_s):
+        new_s = [None] * (self.tau - 1) + [tmdp_s[-1]]
+        return tuple(new_s)
+
+    def reset_init(self):
+        self.init = {((None,) * (self.tau-1)) + (self.mdp.init.keys()[0],) :1}
+
+    def get_state_to_remove(self):
+        return self.temp_init_state
+
+    def build_states(self):
+        # Make a dictionary of ts edges 
+        ts_edge_dict = {s:self.mdp.g.edge[s].keys() for s in self.mdp.g.edge.keys()}
+        # ts_edge_dict[None] = self.mdp.g.edge.keys() + [None]
 
         # make list of tau mdp states where each state is represented by a tuple of mdp states
-        tmdp_states = []
+        tau = self.tmdp_stl.get_tau()
+        states = []
         for s in ts_edge_dict.keys():
-            tmdp_states.extend(build_states([s], ts_edge_dict, tau))
+            states.extend(  self.build_states_recurse([s], ts_edge_dict, tau))
 
-        tmdp_states.remove((None,) * tau) # No state should end with a null
+        # states.remove((None,) * tau) # No state should end with a null
 
         # try and recreate process used in ts.read_from_file() except with tau mdp
-        self.name = "Tau MDP"
-        self.init = {((None,) * (tau-1)) + (ts.init.keys()[0],) :1}
+        self.init = {((None,) * (tau-1)) + (self.mdp.init.keys()[0],) :1}
+        self.states = states
+        self.ts_edge_dict = ts_edge_dict
 
-        # create dict of dicts representing edges and attributes of each edge to construct the nx graph from
-        # attributes are based on the mdp edge between the last (current) states in the tau mdp sequence
-        edge_dict = {}
-        for x1 in tmdp_states:
-            edge_attrs = ts.g.edge[x1[-1]]
-            # tmdp states are adjacent if they share the same (offset) history. "current" state transition is implied valid 
-            # based on the set of names created
-            if tau > 1:
-                #TODO use next_mdp_states instead of conditional
-                edge_dict[x1] = {x2:edge_attrs[x2[-1]] for x2 in tmdp_states if x1[1:] == x2[:-1]}
-            else:
-                # Case of tau = 1
-                edge_dict[x1] = {(x2,):edge_attrs[x2] for x2 in ts_edge_dict[x1[0]]}
-
-        self.g = nx.from_dict_of_dicts(edge_dict, create_using=nx.MultiDiGraph()) 
-
-        # add node attributes based on last state in sequence
-        for n in self.g.nodes():
-            self.g.node[n] = ts.g.node[n[-1]]
-
-
-	def build_states(self, past, ts_edge_dict, tau):
+    def build_states_recurse(self, past, ts_edge_dict, tau):
 		if tau == 1:
 			# One tau-MDP state per MDP state
 			return [tuple(past)]
@@ -59,10 +93,47 @@ class Tmdp(lomap.Ts):
 		# recurse for each state in states
 		more_tmdp_states = []
 		for x in tmdp_states:
-			more_tmdp_states.extend(self.build_states(x, ts_edge_dict, tau))
+			more_tmdp_states.extend(self.build_states_recurse(x, ts_edge_dict, tau))
 		
 		return more_tmdp_states
 
+
+    def build_transitions(self):
+
+        # create dict of dicts representing edges and attributes of each edge to construct the nx graph from
+        # attributes are based on the mdp edge between the last (current) states in the tau mdp sequence
+        tau = self.tmdp_stl.get_tau()
+        edge_dict = {}
+        for x1 in self.states:
+            edge_attrs = self.mdp.g.edge[x1[-1]]
+            # tmdp states are adjacent if they share the same (offset) history. "current" state transition is implied valid 
+            # based on the set of names created
+            if tau > 1:
+                #TODO use next_mdp_states instead of conditional
+                edge_dict[x1] = {x2:edge_attrs[x2[-1]] for x2 in self.states if x1[1:] == x2[:-1]}
+            else:
+                # Case of tau = 1
+                edge_dict[x1] = {(x2,):edge_attrs[x2] for x2 in self.ts_edge_dict[x1[0]]}
+
+        self.g = nx.from_dict_of_dicts(edge_dict, create_using=nx.MultiDiGraph()) 
+
+        # add node attributes based on last state in sequence
+        for n in self.g.nodes():
+            self.g.node[n] = self.mdp.g.node[n[-1]]
+
+    def reward(self, tmdp_s, beta):
+        temporal_op = self.tmdp_stl.get_outer_temporal_op()
+        if temporal_op == 'F':
+            r = np.exp(beta * self.tmdp_stl.rdegree_rew(tmdp_s))
+        elif temporal_op == 'G':
+            r = -1 * np.exp(-1 * beta * self.tmdp_stl.rdegree_rew(tmdp_s))
+            positive_offset = np.exp(0)
+            r += positive_offset
+        return r
+
+    def sat(self, tmdp_s):
+        robustness = (self.tmdp_stl.rdegree_rew(tmdp_s) > 0)
+        return robustness
 
 
 class TmdpStl:
@@ -74,8 +145,28 @@ class TmdpStl:
         self.tau = None
         self.rdegree_lse_cache = {}  # cache dict
 
+        # extract the big phi
+        end = stl_expr.index(']') + 1
+        self.big_phi = stl_expr[:end]
+
+        # extract the small phi
+        self.small_phi = stl_expr[end:]
+
+    def get_outer_temporal_op(self):
+        return self.big_phi[0]
+
     def set_ts_sig_dict(self, ts_sig_dict):
         self.ts_sig_dict = ts_sig_dict
+
+    def rdegree_rew(self,tmdp_s):
+        # Create signal as coordinate position of each state in the history
+        if self.ts_sig_dict == None:
+            raise Exception("State to signal mapping must be set with set_ts_sig_dict().")
+
+        sig = [self.ts_sig_dict[x] for x in tmdp_s]
+        rdeg = self.rdegree(self.small_phi, sig)
+        return rdeg
+
 
     def rdegree_lse(self, tmdp_s):
 
@@ -208,13 +299,13 @@ class TmdpStl:
             else:
                 sig = sig[0]
             if 'x<' in expr:
-                return f - sig[0]
+                return f - sig['x']
             elif 'x>' in expr:
-                return sig[0] - f
+                return sig['x'] - f
             elif 'y<' in expr:
-                return f - sig[1]
+                return f - sig['y']
             elif 'y>' in expr:
-                return sig[1] - f
+                return sig['y'] - f
             else:
                 raise Exception('Invalid stl expression: ' + str(self.expr) + ' when evaluating: ' + str(expr))
 
@@ -236,6 +327,9 @@ class TmdpStl:
         Valid formats for phi include K[.]a, (K[.]a), (K[.]a)&(K[.]b)&(...), p, and (p) where p is a predicate, K is either G or F, 
             and a,b are valid expressions for phi by this same definition. Additionally & is replacible with |.
         """
+
+        # TODO: this is waaay over complicated compared to STL fragment in tau mdp paper
+
         if phi == None:
             phi = self.expr
         if 'G' not in phi and 'F' not in phi:
@@ -255,7 +349,7 @@ class TmdpStl:
             comma = outer.index(',')
             b = float(outer[comma+1:-1])
             hrz = b + self.hrz(inner)
-        return hrz
+        return int(hrz)
     
     def sep_paren(self, phi):
         """

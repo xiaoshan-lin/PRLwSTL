@@ -22,9 +22,22 @@ class AugPa(lomap.Model):
 
         # generate
         synth.ts_times_fsa(aug_mdp, dfa, self)
+        aug_mdp.reset_init()
+        aug_mdp_init = aug_mdp.init.keys()[0]
+        dfa_init = dfa.init.keys()[0]
+
+        # May need to remove a certain aug mdp state
+        to_remove = aug_mdp.get_state_to_remove()
+        pa_to_remove = [p for p in self.get_states() if self.get_aug_mdp_state(p) == to_remove]
+        self.g.remove_nodes_from(pa_to_remove)
+
+        self.init = {(aug_mdp_init, dfa_init):1}
 
         # allow caller to compute energy so it can be timed
         self.energy_dict = None
+
+    def get_aug_mdp_state(self, pa_state):
+        return pa_state[0]
 
     def get_mdp_state(self, pa_state):
         aug_mdp_state = pa_state[0]
@@ -42,11 +55,25 @@ class AugPa(lomap.Model):
 
     def compute_energy(self):
 
-        #TODO increase speed significantly by computing energy over pa of simple mdp and dfa
+        #increase speed significantly by computing energy over pa of simple mdp and dfa
         #   and then projecting to this pa
 
-        synth.compute_energy(self)
-        self.energy_dict = nx.get_node_attributes(self.g, 'energy')
+        mdp = self.aug_mdp.get_mdp()
+        simple_pa = synth.ts_times_fsa(mdp, self.dfa)
+
+        # compute_energy wants a "new_weight" attribute. Just weight all transitions the same.
+        new_weight_dict = {edge:1 for edge in simple_pa.g.edges()}
+        nx.set_edge_attributes(simple_pa.g, 'new_weight', new_weight_dict)
+
+        synth.compute_energy(simple_pa)
+        mdp_energy_dict = nx.get_node_attributes(simple_pa.g, 'energy')
+        energy_dict = {}
+        for p in self.get_states():
+            mdp_s = self.get_mdp_state(p)
+            dfa_s = self.get_dfa_state(p)
+            energy_dict[p] = mdp_energy_dict[(mdp_s, dfa_s)]
+        self.energy_dict = energy_dict
+        nx.set_node_attributes(self.g, 'energy', energy_dict)
 
     def get_energy(self, pa_state):
         return self.energy_dict[pa_state]
@@ -195,7 +222,7 @@ class AugPa(lomap.Model):
         else:
             z = init_pa_state
             if z not in self.get_states():
-                raise Exception("invalid pa state")
+                raise Exception("invalid pa state: {}".format(z))
         tau = self.aug_mdp.get_tau()
         init_traj = [z]
 
@@ -218,12 +245,13 @@ class AugPa(lomap.Model):
     def new_ep_state(self, last_pa_state):
         # reset DFA state
         aug_mdp_s = last_pa_state[0]
+        aug_mdp_init_s = self.aug_mdp.new_ep_state(aug_mdp_s)
         dfa_init_s = self.dfa.init.keys()[0]
-        new_pa_s = (aug_mdp_s, dfa_init_s)
+        new_pa_s = (aug_mdp_init_s, dfa_init_s)
         if new_pa_s not in self.get_states():
             # This is the case if using the label of s' in the DFA update rather than the label of s.
             # MDP states with a label corresponding to the first hold will not have a PA state with the inital DFA state.
-            new_pa_s = (aug_mdp_s, dfa_init_s + 1)
+            new_pa_s = (aug_mdp_init_s, dfa_init_s + 1)
         z, _, init_traj = self.initial_state_and_time(new_pa_s)
 
         return z, init_traj
@@ -231,3 +259,7 @@ class AugPa(lomap.Model):
     def is_accepting_state(self, pa_s):
         dfa_state = self.get_dfa_state(pa_s)
         return dfa_state in self.dfa.final
+
+    def sat(self, pa_s):
+        aug_mdp_s = self.get_aug_mdp_state(pa_s)
+        return self.aug_mdp.sat(aug_mdp_s)
