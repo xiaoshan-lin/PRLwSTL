@@ -1,3 +1,0 @@
--actionlar p_t - p_s mi check et dikkatli ol
--action uncertainty de 2 -> 1,4,5  mi check et
--safe_learning_model_based_small_env i baz al

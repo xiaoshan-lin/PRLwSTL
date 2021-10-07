@@ -1,5 +1,3 @@
-#from create_environment import create_ts, update_obs_mat, update_adj_mat_3D,\
-#								create_input_file, update_adj_mat_3D
 
 from __future__ import division # dividing two integers produces a float
 
@@ -16,11 +14,20 @@ import random
 from tmdp_stl import Tmdp
 from product_automaton import AugPa
 from fmdp_stl import Fmdp
+from static_reward_mdp import StaticRewardMdp
+from STL import STL
 
 
 
-AUG_MDP_TYPE = 'FLAG-MDP'
-# AUG_MDP_TYPE = 'TAU-MDP'
+# AUG_MDP_TYPE = 'FLAG-MDP'
+AUG_MDP_TYPE = 'TAU-MDP'
+# AUG_MDP_TYPE = 'STATIC-REWARD-MDP'
+STATIC_MDP_HRZ = 30
+
+MDP_REW_DICT = {
+    'r13':5,
+    'r6':5
+}
 
 NORMAL_COLOR = '\033[0m'
 
@@ -31,6 +38,10 @@ COLOR_DICT = {
     'intended'      : '\033[49m',       # no highlight
     'unintended'    : '\033[48;5;1m'    # red highlight
 }
+
+INIT_STATE = (0,0,0)
+PICKUP_STATE = (3,1,0)
+DELIVERY_STATE = (1,3,0)
 
 
 
@@ -179,12 +190,17 @@ def build_environment(m, n, h, init_state, pick_up, delivery, custom_task, stl_e
 
     # tmdp, _ = tau_mdp(ts, ts_dict, tau)
 
+    aug_mdp_timer = timeit.default_timer()
     if AUG_MDP_TYPE == 'FLAG-MDP':
         aug_mdp = Fmdp(ts, stl_expr, state_to_pos)
     elif AUG_MDP_TYPE == 'TAU-MDP':
         aug_mdp = Tmdp(ts, stl_expr, state_to_pos)
+    elif AUG_MDP_TYPE == 'STATIC-REWARD-MDP':
+        hrz = STATIC_MDP_HRZ
+        aug_mdp = StaticRewardMdp(ts, hrz, state_to_pos, MDP_REW_DICT)
     else:
         raise Exception("invalid AUG_MDP_TYPE")
+    aug_mdp_timecost = timeit.default_timer() - aug_mdp_timer
 
     # TODO: check that this is the correct episode length
     ep_len = aug_mdp.get_hrz()
@@ -248,24 +264,27 @@ def build_environment(m, n, h, init_state, pick_up, delivery, custom_task, stl_e
 
     energy_timecost =  timeit.default_timer() - energy_time
 
-    init_state_num = [init_state[0] * n + init_state[1]]
+    init_state_num = init_state[0] * n + init_state[1]
 
     # # Display some important info
     print('##### PICK-UP and DELIVERY MISSION #####' + "\n")
     print('Initial Location  : ' + str(init_state) + ' <---> Region ' + str(init_state_num))
     print('Pick-up Location  : ' + str(pick_up) + ' <---> Region ' + pick_up_str)
-    print('Delivery Location : ' + str(delivery_state[0]) + ' <---> Regions ' + delivery_str)
+    print('Delivery Location : ' + str(delivery) + ' <---> Region ' + delivery_str)
     # print('Reward Locations  : ' + str(rewards) + ' <---> Regions ' + str(rewards_ts_indexes) + "\n")
     print('State Matrix : ')
     print(state_mat)
     print("\n")
     print('Mission Duration  : ' + str(ep_len) + ' time steps')
     print('TWTL Task : ' + phi + "\n")
-    print('Computational Costst : TS created in ' + str(ts_timecost) + ' seconds')
+    print('Time PA state size: {}\n'.format(pa.get_tpa_state_size()))
+    print('Time Cost:')
+    print('TS creation time (s):            {:<7}'.format(ts_timecost))
+    print('Augmented MDP creation time (s): {:<7}'.format(aug_mdp_timecost))
     # print('			TS created in ' + str(ts_timecost) + ' seconds')
-    print('		       DFA created in ' + str(dfa_timecost) + ' seconds')
-    print('		       PA created in ' + str(pa_timecost) + ' seconds')
-    print('		       Energy of PA states calculated in ' + str(energy_timecost) + ' seconds')
+    print('DFA creation time (s):           {:<7}'.format(dfa_timecost))
+    print('PA creation time (s):            {:<7}'.format(pa_timecost))
+    print('PA energy calculation time (s):  {:<7}'.format(energy_timecost))
 
     return pa
 
@@ -285,18 +304,21 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
     # Count trajectories that reach an accepting state (pass the TWTL task)
     twtl_pass_count = 0
 
+    # initial state,time
+    z,t_init,init_traj = pa.initial_state_and_time()
+
     # initialize Q table
-    init_val = -10
+    init_val = 0
     time_steps = pa.get_hrz()
-    qtable = [{} for _ in range(time_steps+1)]
-    for i,_ in enumerate(qtable):
+    qtable = {i:{} for i in range(t_init, time_steps)}
+    for i in qtable:
         qtable[i] = {p:{} for p in pa.get_states()}
         for p in qtable[i]:
             qtable[i][p] = {q:init_val + np.random.normal(0,0.0001) for q in pa.g.neighbors(p)}
 
     # initialize optimal policy pi on pruned time product automaton
-    pi = [{} for _ in range(time_steps)]
-    for t,_ in enumerate(pi):
+    pi = {t:{} for t in qtable}
+    for t in pi:
         for p in pa.pruned_time_actions[t]:
             if pa.pruned_time_actions[t][p] != []:
                 # initialize with a neighbor in the pruned space
@@ -306,8 +328,13 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
                 pi[t][p] = None
         # pi[t] = {p:max(qtable[t][p], key=qtable[t][p].get) for p in pa.pruned_time_actions[t]}
 
-    # initial state,time
-    z,t_init,init_traj = pa.initial_state_and_time()
+    # Make an entry in q table for learning initial states and initialize pi
+    qtable[time_steps] = {p:{} for p in pa.get_states()}
+    pi[time_steps] = {}
+    for p in qtable[time_steps]:
+        qtable[time_steps][p] = {q:init_val + np.random.normal(0,0.0001) for q in pa.get_new_ep_states(p)}
+        pi[time_steps][p] = max(qtable[time_steps][p], key=qtable[time_steps][p].get)
+
     if log:
         trajectory_reward_log.extend(init_traj)
         init_mdp_traj = [pa.get_mdp_state(z) for z in init_traj]
@@ -341,8 +368,7 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
 
             reward = pa.reward(next_z)
             cur_q = qtable[t][z][next_z]
-            # TODO on the last time step, next z should probably be the reset version
-            future_qs = qtable[(t+1) % (time_steps + 1)][next_z] # TODO: evaluate if a modulus is the correct approach
+            future_qs = qtable[t+1][next_z]
             max_future_q = max(future_qs.values())
 
             # Update q value
@@ -360,11 +386,33 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
 
             z = next_z
 
+        epsilon = epsilon * eps_decay
+
         if pa.is_accepting_state(z):
             twtl_pass_count += 1
 
-        # An episode has completed. The pa state must be reset while preserving the aug_mdp state.
-        z, init_traj = pa.new_ep_state(z)
+        # choose initial trajectory for next episode
+        # Choose init state either randomly or py pi
+        if np.random.uniform() < epsilon:   # Explore
+            possible_init_zs = qtable[time_steps][z].keys()
+            init_z = random.choice(possible_init_zs)
+            action_chosen_by = "explore"
+        else:                               # Exploit
+            init_z = pi[time_steps][z]
+            action_chosen_by = "exploit"
+
+        init_traj = pa.get_new_ep_trajectory(z, init_z)
+
+        # Update qtable and optimal policy
+        reward = pa.reward(init_z)
+        cur_q = qtable[time_steps][z][init_z]
+        future_qs = qtable[t_init][init_z]
+        max_future_q = max(future_qs.values())
+        new_q = (1 - learn_rate) * cur_q + learn_rate * (reward + discount * max_future_q)
+        qtable[time_steps][z][init_z] = new_q
+        pi[time_steps][z] = max(qtable[time_steps][z], key=qtable[time_steps][z].get)
+
+        z = init_z
 
         if log:
             with open(tr_log_file, 'a') as log_file:
@@ -373,14 +421,28 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
             with open(mdp_log_file, 'a') as log_file:
                 log_file.write(str(mdp_traj_log))
                 log_file.write('\n')
+
             trajectory_reward_log = init_traj[:]
-            init_mdp_traj = [pa.get_mdp_state(z) for z in init_traj]
+            init_mdp_traj = [pa.get_mdp_state(p) for p in init_traj]
             mdp_traj_log = ''
             for x in init_mdp_traj:
                 mdp_traj_log += '{:<4}'.format(x)
 
             # write formatted q table to file
             # with open(q_table_file, 'w') as f:
+            #     time = qtable.keys()
+            #     states = qtable[time[0]].keys()
+            #     t_fmt = '{:<3}'
+            #     s_fmt = q_fmt = '{:<6}'
+            #     for s in states:
+            #         nbrs = pa.g.neighbors(s)
+            #         nbrs_mdp = [pa.get_mdp_state(n) for n in nbrs]
+            #         f.write('\nstate = {}\n'.format(s))
+            #         # header
+            #         f.write((s_fmt * len(nbrs)).format(*nbrs_mdp))
+            #     for t in time:
+            #         f.write('\nt = {}\n'.format(t))
+
             #     # time header
             #     f.write('{:<50}'.format(""))
             #     f.write(('{:<6}' * len(qtable)).format(*list(range(len(qtable)))))
@@ -396,45 +458,92 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
 
     return pi
 
-def test_policy(pi, pa, eps_unc, iters):
+def test_policy(pi, pa, stl_expr, eps_unc, iters):
 
     print('Testing optimal policy with {} iterations'.format(iters))
+
+    mdp_log_file = '../output/test_policy_trajectory_log.txt'
+    open(mdp_log_file, 'w').close() # clear file
+    log = True
 
     # z,t_init,init_traj = pa.initial_state_and_time(((None,None,'r7'), 0))
     # z,t_init,init_traj = pa.initial_state_and_time((('r7', (0,)), 0))
     z,t_init,init_traj = pa.initial_state_and_time()
     time_steps = pa.get_hrz()
-    traj = []
-    traj.extend(init_traj)
+    # traj = []
+    # traj.extend(init_traj)
+
+    if log:
+        mdp_traj_str = ''
+        mdp_traj_log = []
+        init_mdp_traj = [pa.get_mdp_state(z) for z in init_traj]
+        for x in init_mdp_traj:
+            mdp_traj_str += '{:<4}'.format(x)
+
 
     # count TWTL satsifactions
     twtl_pass_count = 0
+
+    # Count STL satisfactions and avg robustness
+    parser = STL(stl_expr)
+    mdp_traj = [pa.get_mdp_state(z) for z in init_traj]
     stl_sat_count = 0
-    total_count = 0
+    stl_rdeg_sum = 0
 
     for _ in range(iters):
         for t in range(t_init, time_steps):
             intended_z = pi[t][z]
             if intended_z == None:
                 intended_z = pa.pi_eps_go[t][z]
+                action_chosen_by = "pi epsilon go"
+            else:
+                action_chosen_by = 'exploit'
             
             # take action
             next_z = pa.take_action(z, intended_z, eps_unc)
+            action_result = 'intended' if next_z == intended_z else 'unintended'
 
-            total_count += 1
-            if pa.sat(next_z):
-                stl_sat_count += 1
+            if log:
+                mdp_str = COLOR_DICT[action_result] + COLOR_DICT[action_chosen_by] + '{:<4}'.format(pa.get_mdp_state(next_z))
+                mdp_traj_str += mdp_str
 
             z = next_z
+
+            mdp_traj.append(pa.get_mdp_state(next_z))
 
         if pa.is_accepting_state(z):
             twtl_pass_count += 1
 
-        z, init_traj = pa.new_ep_state(z)
+        z_init = pi[time_steps][z]
+        init_traj = pa.get_new_ep_trajectory(z,z_init)
+        z = z_init
+
+        mdp_sig = [pa.aug_mdp.sig_dict[x] for x in mdp_traj]
+        rdeg = parser.rdegree(mdp_sig)
+        if rdeg > 0:
+            stl_sat_count += 1
+        stl_rdeg_sum += rdeg
+
+        mdp_traj = [pa.get_mdp_state(p) for p in init_traj]
 
 
-    print("TWTL success rate: {} / {} = {}".format(twtl_pass_count, iters, twtl_pass_count/iters))
-    print("STL success rate: {}".format(stl_sat_count/total_count))
+        if log:
+            mdp_traj_str += NORMAL_COLOR + '{:>6}'.format(rdeg)
+            mdp_traj_log.append(mdp_traj_str)
+            mdp_traj_str = ''
+            for pa_s in init_traj:
+                mdp_s = pa.get_mdp_state(pa_s)
+                mdp_traj_str += '{:<4}'.format(mdp_s)
+
+    if log:
+        with open(mdp_log_file, 'a') as log_file:
+            for line in mdp_traj_log:
+                log_file.write(line)
+                log_file.write('\n')
+
+    print("TWTL mission success: {} / {} = {}".format(twtl_pass_count, iters, twtl_pass_count/iters))
+    print("STL mission success: {} / {} = {}".format(stl_sat_count, iters, stl_sat_count/iters))
+    print("Avg robustness degree: {}".format(stl_rdeg_sum/iters))
 
 
 
@@ -448,51 +557,64 @@ if __name__ == '__main__':
     length = 4       # of rows
     width = 4       # of columns  8
     height = 1       # height set to 1 for 2D case
-    ts_size = length * width
+    # ts_size = length * width
 
     # STL constraint
-    stl_expr = 'G[0,20]F[0,2]((x>2)&(y>2))'
-    # stl_expr = 'F[0,20]G[0,2]((x>2)&(x<3)&(y>2)&(y<3))'
+    # stl_expr = 'G[0,24]((F[0,6]((x>3)&((y>1)&(y<2))))&(F[0,6](((x>1)&(x<2))&((y>2)&(y<3)))))'
+    # stl_expr = 'G[0,20]F[0,2](((x>2)&(x<3))&((y>1)&(y<3)))'
+    stl_expr = 'G[0,19]F[0,3]((x>2)&(y>2))'
     # stl = TmdpStl(stl_expr)
     # tau = stl.get_tau()
     # ep_len = int(stl.hrz())
     
     # Specify initial states and obstacles (row,column,altitude/height)
-    init_state    = (0,0,0)
+    # init_state    = (0,0,0)
     
-    pick_up_state = (3,3,0)
-    delivery_state = (1,3,0)
+    # pick_up_state = (3,3,0)
+    # delivery_state = (1,3,0)
 
     ##### System Inputs for Q-Learning #### 	#For debugging
-    LEARN_FLAG = True  # False # If true learn a new Q table, if False load the previously found one
-    sample_size = 10000 # Specify How Many samples to run
+    # sample_size = 10000 # Specify How Many samples to run
 
-    num_episodes = 100000      # of episodes
-    SHOW_EVERY = 5000       # Print out the info at every ... episode
+    num_episodes = 20000      # of episodes
+    # SHOW_EVERY = 5000       # Print out the info at every ... episode
     # LEARN_RATE = 0.1
     LEARN_RATE = 0.1
     DISCOUNT   = 0.999
-    # EPS_DECAY  = 0.999995 #0.99989
-    EPS_DECAY = 1
-    epsilon    = 0.3# exploration trade-off
+
+    explore_prob_start = 0.4
+    explore_prob_end = 0.07
+    # start * decay^(num_eps - 1) = end
+    explore_prob_decay = (explore_prob_end/explore_prob_start)**(1/(num_episodes-1))
+
     eps_unc    = 0.03 # Uncertainity in actions, real uncertainnity in MDP
     eps_unc_learning = 0.05 # Overestimated uncertainity used in learning
-    des_prob     = 0.86 # Minimum desired probability of satisfaction
+    des_prob     = 0.85 # Minimum desired probability of satisfaction
 
     n_samples = 50 # Running the algorithm for different model based samples, 0 for model free learning
 
     prep_start_time = timeit.default_timer()
 
-    pa = build_environment(length, width, height, init_state, pick_up_state, delivery_state, None, stl_expr)
-    pa.prune_actions(eps_unc, des_prob)
+    pa = build_environment(length, width, height, INIT_STATE, PICKUP_STATE, DELIVERY_STATE, None, stl_expr)
 
+    prune_start = timeit.default_timer()
+    pa.prune_actions(eps_unc, des_prob)
+    prune_end = gen_start = timeit.default_timer()
+    pa.gen_new_ep_states()
+    gen_end = timeit.default_timer()
+
+    print('Time PA action pruning time (s): {}'.format(prune_end - prune_start))
+    print('New ep/traj generation time (s): {}'.format(gen_end - gen_start))
+    print('')
+
+    print('learning with {} episodes'.format(num_episodes))
     timer = timeit.default_timer()
-    pi = Q_learning(pa, num_episodes, eps_unc, LEARN_RATE, DISCOUNT, EPS_DECAY, epsilon, n_samples)
+    pi = Q_learning(pa, num_episodes, eps_unc, LEARN_RATE, DISCOUNT, explore_prob_decay, explore_prob_start, n_samples)
     qlearning_time = timeit.default_timer() - timer
-    print('learning time: {}'.format(qlearning_time))
+    print('learning time: {} seconds'.format(qlearning_time))
 
     # test policy
-    test_policy(pi, pa, eps_unc, 500)
+    test_policy(pi, pa, stl_expr, eps_unc, 500)
 
     # generate trajectory
     # z,t_init,init_traj = pa.initial_state_and_time((('r7', (0,)), 0))
@@ -508,9 +630,9 @@ if __name__ == '__main__':
     pi_file = '../output/optimal_policy.txt'
     with open(pi_file, 'w') as f:
         fmt = '{:<23} ||  ' + '{:>22}' * len(pi) + '\n'
-        f.write(fmt.format('', *list(range(len(pi)))))
-        for s in sorted(pi[0].keys()):
-            s2 = [pi_t[s] for pi_t in pi]
+        f.write(fmt.format('', *pi.keys()))
+        for s in sorted(pi[pi.keys()[0]].keys()):
+            s2 = [pi[t][s] for t in pi]
             f.write(fmt.format(s, *s2))
 
     # for ind_p in range(len(pick_up_state)):

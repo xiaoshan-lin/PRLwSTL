@@ -19,6 +19,7 @@ class AugPa(lomap.Model):
         self.aug_mdp = aug_mdp
         self.dfa = dfa
         self.time_bound = time_bound
+        self.reward_cache = {}
 
         # generate
         synth.ts_times_fsa(aug_mdp, dfa, self)
@@ -52,6 +53,9 @@ class AugPa(lomap.Model):
 
     def get_states(self):
         return self.g.nodes()
+
+    def get_tpa_state_size(self):
+        return len(self.g.nodes()) * self.time_bound
 
     def compute_energy(self):
 
@@ -162,6 +166,7 @@ class AugPa(lomap.Model):
     def get_low_prob_neighbors(self, s1, s2):
         # TODO: put some of this in an mdp class
         # region_to_xy = self.aug_mdp.sig_dict
+        # TODO should be more generalized than using sig_dict
         region_to_xy = {r:(d['x'],d['y']) for r,d in self.aug_mdp.sig_dict.iteritems()}
         neighbors = self.g.neighbors(s1)
         xy_to_pa = {region_to_xy[self.get_mdp_state(pa_s)]:pa_s for pa_s in neighbors}
@@ -238,9 +243,15 @@ class AugPa(lomap.Model):
 
     def reward(self, pa_s, beta = 2):
         aug_mdp_s = pa_s[0]
-        if type(aug_mdp_s) != tuple:
-            raise Exception("Invalid augmented mdp state!")
-        return self.aug_mdp.reward(aug_mdp_s, beta)
+
+        try:
+            rew = self.reward_cache[(aug_mdp_s,beta)]
+        except KeyError:
+            if not self.aug_mdp.is_state(aug_mdp_s):
+                raise Exception("Invalid augmented mdp state!")
+            rew = self.aug_mdp.reward(aug_mdp_s, beta)
+            self.reward_cache[(aug_mdp_s,beta)] = rew
+        return rew
 
     def new_ep_state(self, last_pa_state):
         # reset DFA state
@@ -263,3 +274,63 @@ class AugPa(lomap.Model):
     def sat(self, pa_s):
         aug_mdp_s = self.get_aug_mdp_state(pa_s)
         return self.aug_mdp.sat(aug_mdp_s)
+
+    def gen_new_ep_states(self):
+        # Generates a dictionary that maps each pa state (at end of ep) to possible pa states at t = tau-1, and each of those 
+        #   pa states to possible initial trajectories that could lead to that
+
+        new_ep_dict = {}
+
+        def new_ep_states_recurse(pa_s, tau, t = 0, temp_dict = None, hist = None):
+            # Assumes that pa_s is the state chosen at t = 0
+            if temp_dict == None:
+                temp_dict = {}
+            if hist == None:
+                hist = []
+
+            hist.append(pa_s)
+            try:
+                neighbors = self.pruned_time_actions[t][pa_s]
+            except KeyError:
+                pa_s = (pa_s[0], self.dfa.init.keys()[0] + 1)
+                neighbors = self.pruned_time_actions[t][pa_s]
+            if t == tau-2:
+                for n in neighbors:
+                    if n in temp_dict:
+                        temp_dict[n].append(hist + [n])
+                    else:
+                        temp_dict[n] = [hist + [n]]
+                hist.pop()
+                return temp_dict
+            
+            for n in neighbors:
+                temp_dict = new_ep_states_recurse(n, tau, t + 1, temp_dict, hist)
+
+            hist.pop()
+            return temp_dict
+
+        tau = self.aug_mdp.get_tau()
+        if tau < 2:
+            raise Exception("Tau < 2 not supported in initial state selection")
+
+        for pa_s in self.get_states():
+            if pa_s not in new_ep_dict:
+                aug_mdp_s = self.get_aug_mdp_state(pa_s)
+                null_aug_mdp_s = self.aug_mdp.get_null_state(aug_mdp_s)
+                null_pa_s = (null_aug_mdp_s, self.dfa.init.keys()[0])
+                if null_pa_s not in new_ep_dict:
+                    new_ep_dict[null_pa_s] = new_ep_states_recurse(null_pa_s, tau)
+                new_ep_dict[pa_s] = new_ep_dict[null_pa_s]
+
+        self.new_ep_dict = new_ep_dict
+
+    def get_new_ep_states(self, pa_s):
+        new_ep_states = self.new_ep_dict[pa_s].keys()
+        return new_ep_states
+
+    def get_new_ep_trajectory(self, last_pa_s, init_pa_s):
+        new_ep_trajs = self.new_ep_dict[last_pa_s][init_pa_s]
+        selection_idx = np.random.choice(len(new_ep_trajs))
+        selection = new_ep_trajs[selection_idx]
+        return selection
+                

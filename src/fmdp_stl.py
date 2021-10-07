@@ -21,6 +21,9 @@ class Fmdp(lomap.Ts):
         self.sig_dict = mdp_sig_dict
         self.fmdp_stl = FmdpStl(stl_expr, mdp_sig_dict)
 
+        self.flag_max = [tau-1 for tau in self.fmdp_stl.get_tau()]
+
+        #TODO only create states that can be accessed
         self.build_states()
         self.build_transitions()
 
@@ -33,8 +36,7 @@ class Fmdp(lomap.Ts):
         
     def build_states(self):
         mdp_states = self.mdp.g.nodes()
-        tau = self.fmdp_stl.get_tau()
-        flag_set = [np.linspace(0,1,t) for t in tau]
+        flag_set = [range(0,m+1) for m in self.flag_max]
         flag_product = itertools.product(*flag_set)
         self.states = list(itertools.product(mdp_states, flag_product))
         node_attrs = [(s, self.mdp.g.node[s[0]]) for s in self.states]
@@ -95,6 +97,18 @@ class Fmdp(lomap.Ts):
     def sat(self, fmdp_s):
         return self.fmdp_stl.sat(fmdp_s)
 
+    def is_state(self, fmdp_s):
+        # TODO potentially make this more robust
+        return type(fmdp_s) == tuple
+
+    def get_null_state(self, fmdp_s):
+        # mdp_s = self.get_mdp_state(fmdp_s)
+        # flags = tuple(self.flag_max[:])
+        # init_s = (mdp_s, flags)
+        # return init_s
+
+        # Flags should be correct by t = tau-1 no matter how they start
+        return fmdp_s
         
 
 class FmdpStl:
@@ -140,10 +154,12 @@ class FmdpStl:
             if hrz % 1 != 0:
                 raise Exception("Non integer in STL expression. Is this allowed?")
             self.hrz_i_list.append(int(hrz))
+            # TODO: Paper says not to add 1. I don't think that is correct. Check.
             self.tau_i_list.append(int(hrz) + 1)
             self.pred_i_list.append(phi[end+1:])
 
         self.sig_dict = mdp_sig_dict
+        self.flag_max = [tau-1 for tau in self.tau_i_list]
 
     def get_n(self):
         return self.n
@@ -171,25 +187,29 @@ class FmdpStl:
 
         # loop through each flag, tau, phi and set the next flag
         next_flags = []
-        for flag, tau, phi in zip(flags, self.tau_i_list, self.phi_i_list):
+        for flag, fmax, phi in zip(flags, self.flag_max, self.phi_i_list):
             start = phi.index(']') + 1
             pred = phi[start:]
             satisfies = self.sat_predicate_expr(sig, pred)
             t_op = phi[0]
 
             if t_op == 'F' and satisfies:
-                next_flags.append(1.0)
+                next_flags.append(fmax)
             elif t_op == 'F' and not satisfies:
-                f = max(flag - (1. / (tau - 1.)), 0.0)
+                # f = max(flag - (1. / (tau - 1.)), 0.0)
+                f = max(flag - 1, 0)
                 next_flags.append(f)
             elif t_op == 'G' and satisfies:
-                f = min(flag + (1. / (tau - 1.)), 1.0)
+                # f = min(flag + (1. / (tau - 1.)), 1.0)
+                f = min(flag + 1, fmax)
                 next_flags.append(f)
             elif t_op == 'G' and not satisfies:
-                next_flags.append(0.0)
+                next_flags.append(0)
             else:
                 raise Exception("Error in flag update conditions")
 
+        # convert to integers
+        # next_flags_int = [int(round(f * max_f)) for f,max_f in zip(next_flags, self.flag_max)]
         return tuple(next_flags)
 
 
@@ -219,9 +239,9 @@ class FmdpStl:
                 else:
                     raise Exception("Something went wrong")
             elif phi[0] == 'G':
-                if flag_i == 1 and satisfies:
+                if flag_i == self.flag_max[i] and satisfies:
                     return True
-                elif flag_i < 1 or not satisfies:
+                elif flag_i < self.flag_max[i] or not satisfies:
                     return False
                 else:
                     raise Exception("Something went wrong")
@@ -318,5 +338,9 @@ class FmdpStl:
             raise Exception("Mismatched parentheses in STL expression!")
 
         if len(parts) != 2:
-            raise Exception("invalid and/or expression: " + phi)
+            if phi[0] == '(' and phi[-1] == ')':
+                tup = self.parse_and_or(phi[1:-1])
+                return tup
+            else:
+                raise Exception("invalid and/or expression: " + phi)
         return (parts[0], opr, parts[1])
