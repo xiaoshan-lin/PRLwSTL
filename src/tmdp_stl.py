@@ -3,6 +3,7 @@ import lomap
 import networkx as nx
 import numpy as np
 from STL import STL
+from tqdm import tqdm
 
 class Tmdp(lomap.Ts):
     def __init__(self, mdp, stl_expr, mdp_sig_dict):
@@ -56,6 +57,7 @@ class Tmdp(lomap.Ts):
         return tuple(new_s)
 
     def reset_init(self):
+        self.g.remove_node(self.temp_init_state)
         self.init = {((None,) * (self.tau-1)) + (self.mdp.init.keys()[0],) :1}
 
     def get_state_to_remove(self):
@@ -73,7 +75,7 @@ class Tmdp(lomap.Ts):
         # make list of tau mdp states where each state is represented by a tuple of mdp states
         tau = self.tmdp_stl.get_tau()
         states = []
-        for s in ts_edge_dict.keys():
+        for s in tqdm(ts_edge_dict.keys()):
             states.extend(  self.build_states_recurse([s], ts_edge_dict, tau))
 
         # states.remove((None,) * tau) # No state should end with a null
@@ -111,13 +113,14 @@ class Tmdp(lomap.Ts):
         # attributes are based on the mdp edge between the last (current) states in the tau mdp sequence
         tau = self.tmdp_stl.get_tau()
         edge_dict = {}
-        for x1 in self.states:
+        for x1 in tqdm(self.states):
             edge_attrs = self.mdp.g.edge[x1[-1]]
             # tmdp states are adjacent if they share the same (offset) history. "current" state transition is implied valid 
             # based on the set of names created
             if tau > 1:
                 #TODO use next_mdp_states instead of conditional
-                edge_dict[x1] = {x2:edge_attrs[x2[-1]] for x2 in self.states if x1[1:] == x2[:-1]}
+                # edge_dict[x1] = {x2:edge_attrs[x2[-1]] for x2 in self.states if x1[1:] == x2[:-1]}
+                edge_dict[x1] = {x1[1:]+(s2,):edge_attrs[s2] for s2 in self.mdp.g.neighbors(x1[-1])}
             else:
                 # Case of tau = 1
                 edge_dict[x1] = {(x2,):edge_attrs[x2] for x2 in self.ts_edge_dict[x1[0]]}

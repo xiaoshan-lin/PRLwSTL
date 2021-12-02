@@ -7,6 +7,8 @@ import lomap
 import twtl
 import synthesis as synth
 import networkx as nx
+import matplotlib.pyplot as plt
+
 from dfa import DFAType
 import copy
 import numpy as np
@@ -19,8 +21,8 @@ from STL import STL
 
 
 
-# AUG_MDP_TYPE = 'FLAG-MDP'
-AUG_MDP_TYPE = 'TAU-MDP'
+AUG_MDP_TYPE = 'FLAG-MDP'
+# AUG_MDP_TYPE = 'TAU-MDP'
 # AUG_MDP_TYPE = 'STATIC-REWARD-MDP'
 STATIC_MDP_HRZ = 30
 
@@ -40,102 +42,8 @@ COLOR_DICT = {
 }
 
 INIT_STATE = (0,0,0)
-PICKUP_STATE = (3,1,0)
-DELIVERY_STATE = (1,3,0)
-
-
-
-
-def tau_mdp(ts, ts_weighted, tau):
-
-    # def next_mdp_states(state):
-    # 	return ts.g.edge[state].keys()
-        # all_states = adj_mat[state]
-        # adj_states = []
-        # for state,cost in enumerate(all_states):
-        # 	if cost > 0:
-        # 		adj_states.append(state)
-        # return adj_states
-
-    def build_states(past, ts_edge_dict, tau):
-        if tau == 1:
-            # One tau-MDP state per MDP state
-            return [tuple(past)]
-        next_states = ts_edge_dict[past[-1]]
-        if len(next_states) == 0:
-            # no next states. Maybe an obstacle?
-            return []
-        tmdp_states = [past + [ns] for ns in next_states]
-        if len(tmdp_states[0]) == tau:
-            # each tau-MDP state has 'tau' MDP states
-            # make each state unmutable
-            return [tuple(s) for s in tmdp_states]
-        
-        # recurse for each state in states
-        more_tmdp_states = []
-        for x in tmdp_states:
-            more_tmdp_states.extend(build_states(x, ts_edge_dict, tau))
-        
-        return more_tmdp_states
-    
-    # Make a dictionary of ts edges and add state for null history that can transition to any state
-    ts.g.add_edges_from([(None,s,{'weight':1}) for s in ts.g.edge.keys()])
-    ts.g.add_edge(None,None, weight=0)
-    ts_weighted.g.add_edges_from([(None,s,{'duration':1,'edge_weight':0}) for s in ts.g.edge.keys()])
-    ts_weighted.g.add_edge(None,None, duration=1, edge_weight=0)
-    ts_edge_dict = {s:ts.g.edge[s].keys() for s in ts.g.edge.keys()}
-    # ts_edge_dict[None] = ts.g.edge.keys() + [None]
-
-    # make list of tau mdp states where each state is represented by a tuple of mdp states
-    tmdp_states = []
-    for s in ts_edge_dict.keys():
-        tmdp_states.extend(build_states([s], ts_edge_dict, tau))
-
-    # tmdp_states.remove((None,) * tau) # No state should end with a null
-
-    # try and recreate process used in ts.read_from_file() except with tau mdp
-    # There seems to be a ts with only weights 1 and ts_dict with original weights
-    # Looks like it will be easiest to create another nx for weights rather than recreate desired output format
-    tmdp = lomap.Ts(directed=True, multi=False)
-    tmdp_weighted = lomap.Ts(directed=True, multi=False)
-    tmdp.name = tmdp_weighted.name = "Tau MDP"
-    tmdp.init = tmdp_weighted.init = {((None,) * (tau-1)) + (ts.init.keys()[0],) :1}
-
-    # create dict of dicts representing edges and attributes of each edge to construct the nx graph from
-    # attributes are based on the mdp edge between the last (current) states in the tau mdp sequence
-    edge_dict = {}
-    edge_dict_weighted = {}
-    for x1 in tmdp_states:
-        # if x1[-1] == None:
-        # 	# tmdp none state should not show up in usage. It is necessary for pa construction.
-        # 	edge_attrs = {s:{None:None} for s in ts.g.nodes()}
-        # 	edge_attrs[None] = {None:None}
-        # 	edge_attrs_weighted = {s:{0:{None:None}} for s in edge_attrs.keys()}
-        # else:
-        edge_attrs = ts.g.edge[x1[-1]]
-        edge_attrs_weighted = ts_weighted.g.edge[x1[-1]]
-        # tmdp states are adjacent if they share the same (offset) history. "current" state transition is implied valid 
-        # based on the set of names created
-        if tau > 1:
-            #TODO use next_mdp_states instead of conditional
-            edge_dict[x1] = {x2:edge_attrs[x2[-1]] for x2 in tmdp_states if x1[1:] == x2[:-1]}
-            edge_dict_weighted[x1] = {x2:edge_attrs_weighted[x2[-1]][0] for x2 in tmdp_states if x1[1:] == x2[:-1]}
-        else:
-            # Case of tau = 1
-            edge_dict[x1] = {(x2,):edge_attrs[x2] for x2 in ts_edge_dict[x1[0]]}
-            edge_dict_weighted[x1] = {(x2,):edge_attrs_weighted[x2][0] for x2 in ts_edge_dict[x1[0]]}
-
-    tmdp.g = nx.from_dict_of_dicts(edge_dict, create_using=nx.MultiDiGraph()) 
-    tmdp_weighted.g = nx.from_dict_of_dicts(edge_dict_weighted, create_using=nx.MultiDiGraph()) 
-
-    # add node attributes based on last state in sequence
-    for n in tmdp.g.nodes():
-        tmdp.g.node[n] = ts.g.node[n[-1]]
-    for n in tmdp_weighted.g.nodes():
-        tmdp_weighted.g.node[n] = ts_weighted.g.node[n[-1]]
-
-    return(tmdp, tmdp_weighted)
-    
+PICKUP_STATE = (0,4,0)
+DELIVERY_STATE = (0,1,0)    
 
 
 def build_environment(m, n, h, init_state, pick_up, delivery, custom_task, stl_expr):
@@ -225,6 +133,10 @@ def build_environment(m, n, h, init_state, pick_up, delivery, custom_task, stl_e
     # add self edge to accepting state
     # TODO probably don't hardcode the input set. see dfa_inf.alphabet
     dfa_inf.g.add_edge(4,4, {'guard': '(else)', 'input':set([0,1,2,3]), 'label':'(else)', 'weight':0})
+    
+    # plt.subplot()
+    # nx.draw(dfa_inf.g, with_labels=True)
+    # plt.show()
 
     # Get the PA #
     pa_start_time = timeit.default_timer()
@@ -303,6 +215,8 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
 
     # Count trajectories that reach an accepting state (pass the TWTL task)
     twtl_pass_count = 0
+    ep_rew_sum = 0
+    ep_rewards = np.zeros(episodes)
 
     # initial state,time
     z,t_init,init_traj = pa.initial_state_and_time()
@@ -329,11 +243,11 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
         # pi[t] = {p:max(qtable[t][p], key=qtable[t][p].get) for p in pa.pruned_time_actions[t]}
 
     # Make an entry in q table for learning initial states and initialize pi
-    qtable[time_steps] = {p:{} for p in pa.get_states()}
-    pi[time_steps] = {}
-    for p in qtable[time_steps]:
-        qtable[time_steps][p] = {q:init_val + np.random.normal(0,0.0001) for q in pa.get_new_ep_states(p)}
-        pi[time_steps][p] = max(qtable[time_steps][p], key=qtable[time_steps][p].get)
+    qtable[0] = {p:{} for p in pa.get_null_states()}
+    pi[0] = {}
+    for p in qtable[0]:
+        qtable[0][p] = {q:init_val + np.random.normal(0,0.0001) for q in pa.get_new_ep_states(p)}
+        pi[0][p] = max(qtable[0][p], key=qtable[0][p].get)
 
     if log:
         trajectory_reward_log.extend(init_traj)
@@ -343,7 +257,7 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
     # z = pa.init.keys()[0]
 
     # Loop for number of training episodes
-    for _ in range(episodes):
+    for ep in range(episodes):
         for t in range(t_init, time_steps):
 
             next_states = pa.pruned_time_actions[t][z]
@@ -368,8 +282,11 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
 
             reward = pa.reward(next_z)
             cur_q = qtable[t][z][next_z]
-            future_qs = qtable[t+1][next_z]
-            max_future_q = max(future_qs.values())
+            if t+1 == time_steps:
+                max_future_q = 0
+            else:
+                future_qs = qtable[t+1][next_z]
+                max_future_q = max(future_qs.values())
 
             # Update q value
             new_q = (1 - learn_rate) * cur_q + learn_rate * (reward + discount * max_future_q)
@@ -378,6 +295,9 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
             # Update optimal policy
             if next_states != []:
                 pi[t][z] = max(next_states, key=qtable[t][z].get)
+
+            # track sum of rewards
+            ep_rew_sum += reward
 
             if log:
                 trajectory_reward_log.append(next_z)
@@ -391,26 +311,30 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
         if pa.is_accepting_state(z):
             twtl_pass_count += 1
 
+        ep_rewards[ep] = ep_rew_sum
+        ep_rew_sum = 0
+
         # choose initial trajectory for next episode
-        # Choose init state either randomly or py pi
+        # Choose init state either randomly or by pi
+        z = pa.get_null_state(z)
         if np.random.uniform() < epsilon:   # Explore
-            possible_init_zs = qtable[time_steps][z].keys()
+            possible_init_zs = qtable[0][z].keys()
             init_z = random.choice(possible_init_zs)
             action_chosen_by = "explore"
         else:                               # Exploit
-            init_z = pi[time_steps][z]
+            init_z = pi[0][z]
             action_chosen_by = "exploit"
 
         init_traj = pa.get_new_ep_trajectory(z, init_z)
 
         # Update qtable and optimal policy
         reward = pa.reward(init_z)
-        cur_q = qtable[time_steps][z][init_z]
+        cur_q = qtable[0][z][init_z]
         future_qs = qtable[t_init][init_z]
         max_future_q = max(future_qs.values())
         new_q = (1 - learn_rate) * cur_q + learn_rate * (reward + discount * max_future_q)
-        qtable[time_steps][z][init_z] = new_q
-        pi[time_steps][z] = max(qtable[time_steps][z], key=qtable[time_steps][z].get)
+        qtable[0][z][init_z] = new_q
+        pi[0][z] = max(qtable[0][z], key=qtable[0][z].get)
 
         z = init_z
 
@@ -456,6 +380,12 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
 
     # print("TWTL success rate: {} / {} = {}".format(twtl_pass_count, episodes, twtl_pass_count/episodes))
 
+    # plt.scatter(range(len(ep_rewards)), ep_rewards, alpha=0.3)
+    # plt.xlabel('Episode')
+    # plt.ylabel('Sum of rewards')
+    # plt.show()
+
+
     return pi
 
 def test_policy(pi, pa, stl_expr, eps_unc, iters):
@@ -498,7 +428,7 @@ def test_policy(pi, pa, stl_expr, eps_unc, iters):
                 action_chosen_by = "pi epsilon go"
             else:
                 action_chosen_by = 'exploit'
-            
+
             # take action
             next_z = pa.take_action(z, intended_z, eps_unc)
             action_result = 'intended' if next_z == intended_z else 'unintended'
@@ -514,7 +444,8 @@ def test_policy(pi, pa, stl_expr, eps_unc, iters):
         if pa.is_accepting_state(z):
             twtl_pass_count += 1
 
-        z_init = pi[time_steps][z]
+        z_null = pa.get_null_state(z)
+        z_init = pi[0][z_null]
         init_traj = pa.get_new_ep_trajectory(z,z_init)
         z = z_init
 
@@ -528,7 +459,7 @@ def test_policy(pi, pa, stl_expr, eps_unc, iters):
 
 
         if log:
-            mdp_traj_str += NORMAL_COLOR + '{:>6}'.format(rdeg)
+            mdp_traj_str += NORMAL_COLOR + '| {:>6}'.format(rdeg)
             mdp_traj_log.append(mdp_traj_str)
             mdp_traj_str = ''
             for pa_s in init_traj:
@@ -541,28 +472,50 @@ def test_policy(pi, pa, stl_expr, eps_unc, iters):
                 log_file.write(line)
                 log_file.write('\n')
 
+    twtl_sat_rate = twtl_pass_count/iters
+    stl_sat_rate = stl_sat_count/iters
     print("TWTL mission success: {} / {} = {}".format(twtl_pass_count, iters, twtl_pass_count/iters))
     print("STL mission success: {} / {} = {}".format(stl_sat_count, iters, stl_sat_count/iters))
     print("Avg robustness degree: {}".format(stl_rdeg_sum/iters))
 
+    return stl_sat_rate, twtl_sat_rate
+
+def test_gen_time(iters = 5):
+    times = []
+    for i in range(iters):
+        start = timeit.default_timer()
+
+        pa = build_environment(length, width, height, INIT_STATE, PICKUP_STATE, DELIVERY_STATE, None, stl_expr)
+
+        # prune_start = timeit.default_timer()
+        pa.prune_actions(eps_unc, des_prob)
+        # prune_end = gen_start = timeit.default_timer()
+        # print('Time PA action pruning time (s): {}'.format(prune_end - prune_start))
+        pa.gen_new_ep_states()
+        # gen_end = timeit.default_timer()
+
+        end = timeit.default_timer()
+        times.append(end - start)
+    print('Average environment creation time: {}'.format(np.mean(times)))
 
 
+def main():
 
-if __name__ == '__main__':
     start_time  = time.time()
     # custom_task = '[H^1 r46]^[0,10] * ([H^1 r57]^[0, 10] | [H^1 r24]^[0, 10])  * [H^1 Base1]^[0,10]' # '[H^1 r46]^[0,10] * ([H^1 r57]^[0, 10] | [H^1 r24]^[0, 10])  * [H^1 Base1]^[0,10]'
     custom_task = None
     ##### System Inputs for Data Prep. #####
     # ep_len = 21 # Episode length
-    length = 4       # of rows
-    width = 4       # of columns  8
+    length = 2       # of rows
+    width = 6       # of columns  8
     height = 1       # height set to 1 for 2D case
     # ts_size = length * width
 
     # STL constraint
-    # stl_expr = 'G[0,24]((F[0,6]((x>3)&((y>1)&(y<2))))&(F[0,6](((x>1)&(x<2))&((y>2)&(y<3)))))'
-    # stl_expr = 'G[0,20]F[0,2](((x>2)&(x<3))&((y>1)&(y<3)))'
-    stl_expr = 'G[0,19]F[0,3]((x>2)&(y>2))'
+    # stl_expr = 'G[0,24]((F[0,7]((x>1)&((y>1)&(y<2))))&(F[0,6](((x>1)&(x<2))&((y>2)&(y<3)))))'
+    # stl_expr = 'G[0,10]F[0,7](((x>1)&(x<3))&((y>4)&(y<6)))'
+    stl_expr = 'G[0,10]F[0,3](((x>1)&(x<2))&((y>3)&(y<4)))'
+    # stl_expr = 'G[0,15](F[0,7](((x>4)&(x<5))&((y>4)&(y<5))))&(F[0,7](((x>2)&(x<3))&((y>4)&(y<5))))'
     # stl = TmdpStl(stl_expr)
     # tau = stl.get_tau()
     # ep_len = int(stl.hrz())
@@ -576,7 +529,7 @@ if __name__ == '__main__':
     ##### System Inputs for Q-Learning #### 	#For debugging
     # sample_size = 10000 # Specify How Many samples to run
 
-    num_episodes = 20000      # of episodes
+    num_episodes = 100000      # of episodes
     # SHOW_EVERY = 5000       # Print out the info at every ... episode
     # LEARN_RATE = 0.1
     LEARN_RATE = 0.1
@@ -593,18 +546,24 @@ if __name__ == '__main__':
 
     n_samples = 50 # Running the algorithm for different model based samples, 0 for model free learning
 
+    # test_gen_time()
+
     prep_start_time = timeit.default_timer()
 
     pa = build_environment(length, width, height, INIT_STATE, PICKUP_STATE, DELIVERY_STATE, None, stl_expr)
 
     prune_start = timeit.default_timer()
-    pa.prune_actions(eps_unc, des_prob)
+    pa.prune_actions(eps_unc_learning, des_prob)
     prune_end = gen_start = timeit.default_timer()
+    print('Time PA action pruning time (s): {}'.format(prune_end - prune_start))
     pa.gen_new_ep_states()
     gen_end = timeit.default_timer()
 
-    print('Time PA action pruning time (s): {}'.format(prune_end - prune_start))
+    prep_end_time = timeit.default_timer()
+
     print('New ep/traj generation time (s): {}'.format(gen_end - gen_start))
+    print('')
+    print('Total environment creation time: {}'.format(prep_end_time - prep_start_time))
     print('')
 
     print('learning with {} episodes'.format(num_episodes))
@@ -615,6 +574,28 @@ if __name__ == '__main__':
 
     # test policy
     test_policy(pi, pa, stl_expr, eps_unc, 500)
+
+
+
+
+if __name__ == '__main__':
+    main()
+
+    # num_tests = 20
+    # stl_sat_rates = np.zeros(num_tests)
+    # twtl_sat_rates = np.zeros(num_tests)
+    # for i in range(num_tests):
+    #     pi = Q_learning(pa, num_episodes, eps_unc, LEARN_RATE, DISCOUNT, explore_prob_decay, explore_prob_start, n_samples)
+    #     stl_rate, twtl_rate = test_policy(pi, pa, stl_expr, eps_unc, 500)
+    #     stl_sat_rates[i] = stl_rate
+    #     twtl_sat_rates[i] = twtl_rate
+
+    # print('')
+    # print('After learning with {} episodes over {} tests:'.format(num_episodes, num_tests))
+    # print('Average TWTL satisfaction rate: {}'.format(np.mean(twtl_sat_rates)))
+    # print('Average STL satisfaction rate: {}'.format(np.mean(stl_sat_rates)))
+        
+
 
     # generate trajectory
     # z,t_init,init_traj = pa.initial_state_and_time((('r7', (0,)), 0))
@@ -627,13 +608,13 @@ if __name__ == '__main__':
     # print(traj)
 
 
-    pi_file = '../output/optimal_policy.txt'
-    with open(pi_file, 'w') as f:
-        fmt = '{:<23} ||  ' + '{:>22}' * len(pi) + '\n'
-        f.write(fmt.format('', *pi.keys()))
-        for s in sorted(pi[pi.keys()[0]].keys()):
-            s2 = [pi[t][s] for t in pi]
-            f.write(fmt.format(s, *s2))
+    # pi_file = '../output/optimal_policy.txt'
+    # with open(pi_file, 'w') as f:
+    #     fmt = '{:<23} ||  ' + '{:>22}' * len(pi) + '\n'
+    #     f.write(fmt.format('', *pi.keys()))
+    #     for s in sorted(pi[pi.keys()[0]].keys()):
+    #         s2 = [pi[t][s] for t in pi]
+    #         f.write(fmt.format(s, *s2))
 
     # for ind_p in range(len(pick_up_state)):
     #     for ind in range(len(delivery_state)):

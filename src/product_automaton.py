@@ -6,6 +6,7 @@ import networkx as nx
 import math
 import numpy as np
 import random
+from tqdm import tqdm
 
 class AugPa(lomap.Model):
 
@@ -34,8 +35,28 @@ class AugPa(lomap.Model):
 
         self.init = {(aug_mdp_init, dfa_init):1}
 
+        # Generate set of null states
+        self.null_states = self._gen_null_states()
+
         # allow caller to compute energy so it can be timed
         self.energy_dict = None
+
+    def _gen_null_states(self):
+        null_aug_mdp_states = set([self.aug_mdp.get_null_state(s) for s in self.aug_mdp.g.nodes()])
+        null_pa_states = [(s, self.dfa.init.keys()[0]) for s in null_aug_mdp_states]
+        for i,z in enumerate(null_pa_states):
+            if z not in self.get_states():
+                # Due to using label of s' in DFA update
+                z = (z[0], self.dfa.init.keys()[0] + 1)
+                if z not in self.get_states():
+                    # if still an invalid state, something is wrong
+                    raise Exception('Error: invalid null state: {}'.format(z))
+                null_pa_states[i] = z
+
+        return null_pa_states
+
+    def get_null_states(self):
+        return self.null_states
 
     def get_aug_mdp_state(self, pa_state):
         return pa_state[0]
@@ -102,7 +123,7 @@ class AugPa(lomap.Model):
         for s in accepting_states:
             non_accepting_states.remove(s)
         
-        for p in non_accepting_states:
+        for p in tqdm(non_accepting_states):
             for t in range(ep_len):
                 pi_eps_go_state = None
                 d_eps_min = float('inf')
@@ -253,19 +274,30 @@ class AugPa(lomap.Model):
             self.reward_cache[(aug_mdp_s,beta)] = rew
         return rew
 
-    def new_ep_state(self, last_pa_state):
-        # reset DFA state
-        aug_mdp_s = last_pa_state[0]
-        aug_mdp_init_s = self.aug_mdp.new_ep_state(aug_mdp_s)
-        dfa_init_s = self.dfa.init.keys()[0]
-        new_pa_s = (aug_mdp_init_s, dfa_init_s)
-        if new_pa_s not in self.get_states():
-            # This is the case if using the label of s' in the DFA update rather than the label of s.
-            # MDP states with a label corresponding to the first hold will not have a PA state with the inital DFA state.
-            new_pa_s = (aug_mdp_init_s, dfa_init_s + 1)
-        z, _, init_traj = self.initial_state_and_time(new_pa_s)
+    # def new_ep_state(self, last_pa_state):
+    #     # reset DFA state
+    #     aug_mdp_s = last_pa_state[0]
+    #     aug_mdp_init_s = self.aug_mdp.new_ep_state(aug_mdp_s)
+    #     dfa_init_s = self.dfa.init.keys()[0]
+    #     new_pa_s = (aug_mdp_init_s, dfa_init_s)
+    #     if new_pa_s not in self.get_states():
+    #         # This is the case if using the label of s' in the DFA update rather than the label of s.
+    #         # MDP states with a label corresponding to the first hold will not have a PA state with the inital DFA state.
+    #         new_pa_s = (aug_mdp_init_s, dfa_init_s + 1)
+    #     z, _, init_traj = self.initial_state_and_time(new_pa_s)
 
-        return z, init_traj
+    #     return z, init_traj
+
+    def get_null_state(self, pa_s):
+        aug_mdp_s = self.get_aug_mdp_state(pa_s)
+        null_aug_mdp_s = self.aug_mdp.get_null_state(aug_mdp_s)
+        null_pa_s = (null_aug_mdp_s, self.dfa.init.keys()[0])
+        if null_pa_s not in self.get_states():
+            # Due to using label of s' in DFA update
+            null_pa_s = (null_aug_mdp_s, self.dfa.init.keys()[0] + 1)
+            if null_pa_s not in self.get_states():
+                raise Exception('Error: invalid null state: {}'.format(null_pa_s))
+        return null_pa_s
 
     def is_accepting_state(self, pa_s):
         dfa_state = self.get_dfa_state(pa_s)
@@ -297,7 +329,8 @@ class AugPa(lomap.Model):
             if t == tau-2:
                 for n in neighbors:
                     if n in temp_dict:
-                        temp_dict[n].append(hist + [n])
+                        # temp_dict[n].append(hist + [n])
+                        pass # TODO: Find a less memory intensive method. Take first history until then.
                     else:
                         temp_dict[n] = [hist + [n]]
                 hist.pop()
@@ -313,7 +346,7 @@ class AugPa(lomap.Model):
         if tau < 2:
             raise Exception("Tau < 2 not supported in initial state selection")
 
-        for pa_s in self.get_states():
+        for pa_s in tqdm(self.get_states()):
             if pa_s not in new_ep_dict:
                 aug_mdp_s = self.get_aug_mdp_state(pa_s)
                 null_aug_mdp_s = self.aug_mdp.get_null_state(aug_mdp_s)

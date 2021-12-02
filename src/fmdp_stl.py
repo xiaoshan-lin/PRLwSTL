@@ -29,7 +29,7 @@ class Fmdp(lomap.Ts):
 
 
         # set init state as mdp init state with 0 flags
-        # TODO: Check that this is the correct initialization.
+        # TODO: Check that this is the correct initialization. May cause issues of mdp_init is a satisfying state.
         mdp_init = mdp.init.keys()[0]
         flag_init = (0.,) * self.fmdp_stl.n
         self.init = {(mdp_init, flag_init): 1}
@@ -38,6 +38,7 @@ class Fmdp(lomap.Ts):
         mdp_states = self.mdp.g.nodes()
         flag_set = [range(0,m+1) for m in self.flag_max]
         flag_product = itertools.product(*flag_set)
+        self.flag_set = sorted(itertools.product(*flag_set))
         self.states = list(itertools.product(mdp_states, flag_product))
         node_attrs = [(s, self.mdp.g.node[s[0]]) for s in self.states]
         self.g.add_nodes_from(node_attrs)
@@ -60,6 +61,13 @@ class Fmdp(lomap.Ts):
 
         self.g.add_edges_from(edge_list)
         # self.g.add_edge()
+
+        # Remove states that do not have reverse neighbors
+        # TODO: may be faster to selectivly create states instead
+        g_rev = self.g.reverse()
+        for s in self.g.nodes():
+            if g_rev[s] == {}:
+                self.g.remove_node(s)
 
     def reward(self, fmdp_s, beta):
         temporal_op = self.fmdp_stl.get_outer_temporal_op()
@@ -102,12 +110,15 @@ class Fmdp(lomap.Ts):
         return type(fmdp_s) == tuple
 
     def get_null_state(self, fmdp_s):
-        # mdp_s = self.get_mdp_state(fmdp_s)
-        # flags = tuple(self.flag_max[:])
-        # init_s = (mdp_s, flags)
-        # return init_s
+        mdp_s = self.get_mdp_state(fmdp_s)
 
-        # Flags should be correct by t = tau-1 no matter how they start
+        # flag doesn't really matter because will be correct by t = tau-1 no matter how they start
+        # but we need a consistent null state for q-table etc
+        # loop through flag set until we find a state that exists
+        for flags in self.flag_set:
+            fmdp_s = (mdp_s, flags)
+            if fmdp_s in self.g.nodes():
+                break
         return fmdp_s
         
 
