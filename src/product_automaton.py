@@ -310,6 +310,7 @@ class AugPa(lomap.Model):
     def gen_new_ep_states(self):
         # Generates a dictionary that maps each pa state (at end of ep) to possible pa states at t = tau-1, and each of those 
         #   pa states to possible initial trajectories that could lead to that
+        # Each new episode starts with a state adjacent to the last state of the previous episode
 
         new_ep_dict = {}
 
@@ -319,14 +320,15 @@ class AugPa(lomap.Model):
                 temp_dict = {}
             if hist == None:
                 hist = []
+            else:
+                hist.append(pa_s)
 
-            hist.append(pa_s)
             try:
                 neighbors = self.pruned_time_actions[t][pa_s]
             except KeyError:
                 pa_s = (pa_s[0], self.dfa.init.keys()[0] + 1)
                 neighbors = self.pruned_time_actions[t][pa_s]
-            if t == tau-2:
+            if t == tau-1:
                 for n in neighbors:
                     if n in temp_dict:
                         # temp_dict[n].append(hist + [n])
@@ -338,8 +340,8 @@ class AugPa(lomap.Model):
             
             for n in neighbors:
                 temp_dict = new_ep_states_recurse(n, tau, t + 1, temp_dict, hist)
-
-            hist.pop()
+            if t != 0:
+                hist.pop()
             return temp_dict
 
         tau = self.aug_mdp.get_tau()
@@ -354,6 +356,7 @@ class AugPa(lomap.Model):
                 if null_pa_s not in new_ep_dict:
                     new_ep_dict[null_pa_s] = new_ep_states_recurse(null_pa_s, tau)
                 new_ep_dict[pa_s] = new_ep_dict[null_pa_s]
+                # TODO maybe only key on null_pa_s to save ram for large state spaces, if it is indeed copying here
 
         self.new_ep_dict = new_ep_dict
 

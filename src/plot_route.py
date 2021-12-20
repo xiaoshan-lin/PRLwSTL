@@ -10,11 +10,9 @@ from matplotlib.transforms import Bbox, TransformedBbox
 from matplotlib.colors import to_rgba
 import numpy as np
 
-from main import PICKUP_STATE
 
-
-FILE = '../output/case_study_1_test_flag.txt'
-LINE = 6
+FILE = '../output/test_policy_trajectory_log.txt'
+LINE = 9
 DIMS = (6,2)
 ENV_INFO = {
     'Pickup':{'loc':'r4', 'color':'xkcd:light yellow'},
@@ -465,7 +463,8 @@ def save_learning_animation(file, vid_name, offset=0):
     num = len(lines)
     mid = num // 2
     mid += offset
-    eps = [0,1,2,mid-1,mid,mid+1,num-3,num-2,num-1]
+    # eps = [0,1,2,mid-1,mid,mid+1,num-3,num-2,num-1]
+    eps = [50005, 50006, 50007]
     lns = [lines[i] for i in eps]
     for l in lns:
         print(l)
@@ -479,4 +478,4 @@ def save_learning_animation(file, vid_name, offset=0):
 if __name__ == '__main__':
     # main()
     # do_animation()
-    save_learning_animation('../output/case_study_1_train_flag.txt', '../vids/case_study_1_learning_ep')
+    save_learning_animation('../output/mdp_trajectory_log.txt', '../vids/updated_new_ep')

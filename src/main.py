@@ -8,6 +8,7 @@ import twtl
 import synthesis as synth
 import networkx as nx
 import matplotlib.pyplot as plt
+import yaml
 
 from dfa import DFAType
 import copy
@@ -480,58 +481,40 @@ def test_policy(pi, pa, stl_expr, eps_unc, iters):
 
     return stl_sat_rate, twtl_sat_rate
 
-def test_gen_time(iters = 5):
-    times = []
-    for i in range(iters):
-        start = timeit.default_timer()
+# def test_gen_time(iters = 5):
+#     times = []
+#     for i in range(iters):
+#         start = timeit.default_timer()
 
-        pa = build_environment(length, width, height, INIT_STATE, PICKUP_STATE, DELIVERY_STATE, None, stl_expr)
+#         pa = build_environment(length, width, height, INIT_STATE, PICKUP_STATE, DELIVERY_STATE, None, stl_expr)
 
-        # prune_start = timeit.default_timer()
-        pa.prune_actions(eps_unc, des_prob)
-        # prune_end = gen_start = timeit.default_timer()
-        # print('Time PA action pruning time (s): {}'.format(prune_end - prune_start))
-        pa.gen_new_ep_states()
-        # gen_end = timeit.default_timer()
+#         # prune_start = timeit.default_timer()
+#         pa.prune_actions(eps_unc, des_prob)
+#         # prune_end = gen_start = timeit.default_timer()
+#         # print('Time PA action pruning time (s): {}'.format(prune_end - prune_start))
+#         pa.gen_new_ep_states()
+#         # gen_end = timeit.default_timer()
 
-        end = timeit.default_timer()
-        times.append(end - start)
-    print('Average environment creation time: {}'.format(np.mean(times)))
+#         end = timeit.default_timer()
+#         times.append(end - start)
+#     print('Average environment creation time: {}'.format(np.mean(times)))
 
 
 def main():
 
-    start_time  = time.time()
-    # custom_task = '[H^1 r46]^[0,10] * ([H^1 r57]^[0, 10] | [H^1 r24]^[0, 10])  * [H^1 Base1]^[0,10]' # '[H^1 r46]^[0,10] * ([H^1 r57]^[0, 10] | [H^1 r24]^[0, 10])  * [H^1 Base1]^[0,10]'
-    custom_task = None
-    ##### System Inputs for Data Prep. #####
-    # ep_len = 21 # Episode length
-    length = 2       # of rows
-    width = 6       # of columns  8
-    height = 1       # height set to 1 for 2D case
-    # ts_size = length * width
+    # Load default config
+    with open('../configs/default.yaml', 'r') as f:
+        config = yaml.safe_load(f)
 
-    # STL constraint
-    # stl_expr = 'G[0,24]((F[0,7]((x>1)&((y>1)&(y<2))))&(F[0,6](((x>1)&(x<2))&((y>2)&(y<3)))))'
-    # stl_expr = 'G[0,10]F[0,7](((x>1)&(x<3))&((y>4)&(y<6)))'
-    stl_expr = 'G[0,10]F[0,3](((x>1)&(x<2))&((y>3)&(y<4)))'
-    # stl_expr = 'G[0,15](F[0,7](((x>4)&(x<5))&((y>4)&(y<5))))&(F[0,7](((x>2)&(x<3))&((y>4)&(y<5))))'
-    # stl = TmdpStl(stl_expr)
-    # tau = stl.get_tau()
-    # ep_len = int(stl.hrz())
-    
-    # Specify initial states and obstacles (row,column,altitude/height)
-    # init_state    = (0,0,0)
-    
-    # pick_up_state = (3,3,0)
-    # delivery_state = (1,3,0)
+    env_config = config['environment']
+    height = env_config['height']
+    width = env_config['width']
+    depth = 1       # depth is 1 for 2D case, not tested with anything else
 
-    ##### System Inputs for Q-Learning #### 	#For debugging
-    # sample_size = 10000 # Specify How Many samples to run
+    # stl_expr = 'G[0,10]F[0,3](((x>1)&(x<2))&((y>3)&(y<4)))'
+    stl_expr = config['STL expression']
 
     num_episodes = 100000      # of episodes
-    # SHOW_EVERY = 5000       # Print out the info at every ... episode
-    # LEARN_RATE = 0.1
     LEARN_RATE = 0.1
     DISCOUNT   = 0.999
 
@@ -550,7 +533,7 @@ def main():
 
     prep_start_time = timeit.default_timer()
 
-    pa = build_environment(length, width, height, INIT_STATE, PICKUP_STATE, DELIVERY_STATE, None, stl_expr)
+    pa = build_environment(height, width, depth, INIT_STATE, PICKUP_STATE, DELIVERY_STATE, None, stl_expr)
 
     prune_start = timeit.default_timer()
     pa.prune_actions(eps_unc_learning, des_prob)
