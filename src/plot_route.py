@@ -11,7 +11,7 @@ from matplotlib.colors import to_rgba
 import numpy as np
 
 
-FILE = '../output/mdp_trajectory_log.txt'
+FILE = '../output/test_policy_trajectory_log.txt'
 LINE = 10
 DIMS = (6,6)
 ENV_INFO = {
