@@ -22,15 +22,15 @@ from STL import STL
 
 
 
-AUG_MDP_TYPE = 'FLAG-MDP'
+# AUG_MDP_TYPE = 'FLAG-MDP'
 # AUG_MDP_TYPE = 'TAU-MDP'
 # AUG_MDP_TYPE = 'STATIC-REWARD-MDP'
-STATIC_MDP_HRZ = 30
+# STATIC_MDP_HRZ = 30
 
-MDP_REW_DICT = {
-    'r13':5,
-    'r6':5
-}
+# MDP_REW_DICT = {
+#     'r13':5,
+#     'r6':5
+# }
 
 NORMAL_COLOR = '\033[0m'
 
@@ -42,12 +42,23 @@ COLOR_DICT = {
     'unintended'    : '\033[48;5;1m'    # red highlight
 }
 
-INIT_STATE = (0,0,0)
-PICKUP_STATE = (0,4,0)
-DELIVERY_STATE = (0,1,0)    
+# INIT_STATE = (0,0,0)
+# PICKUP_STATE = (0,4,0)
+# DELIVERY_STATE = (0,1,0)    
 
 
-def build_environment(m, n, h, init_state, pick_up, delivery, custom_task, stl_expr):
+# def build_environment(m, n, h, init_state, pick_up, delivery, custom_task, stl_expr):
+def build_environment(env_cfg, twtl_cfg, mdp_type, reward_cfg):
+
+    # Get values from configs
+    m = env_cfg['height']
+    n = env_cfg['width']
+    h = 1   # depth: use only 2 dimensions
+    init_state = env_cfg['init state']
+
+    pickup = twtl_cfg['pickup']
+    delivery = twtl_cfg['delivery']
+    custom_task = twtl_cfg['custom task']
 
     def xy_to_region(x,y,z):
         # x is down, y is across
@@ -100,13 +111,16 @@ def build_environment(m, n, h, init_state, pick_up, delivery, custom_task, stl_e
     # tmdp, _ = tau_mdp(ts, ts_dict, tau)
 
     aug_mdp_timer = timeit.default_timer()
-    if AUG_MDP_TYPE == 'FLAG-MDP':
+    if mdp_type == 'flag-MDP':
+        stl_expr = reward_cfg['STL expression']
         aug_mdp = Fmdp(ts, stl_expr, state_to_pos)
-    elif AUG_MDP_TYPE == 'TAU-MDP':
+    elif mdp_type == 'tau-MDP':
+        stl_expr = reward_cfg['STL expression']
         aug_mdp = Tmdp(ts, stl_expr, state_to_pos)
-    elif AUG_MDP_TYPE == 'STATIC-REWARD-MDP':
-        hrz = STATIC_MDP_HRZ
-        aug_mdp = StaticRewardMdp(ts, hrz, state_to_pos, MDP_REW_DICT)
+    elif mdp_type == 'static rewards':
+        hrz = reward_cfg['time horizon']
+        reward_dict = reward_cfg['reward dict']
+        aug_mdp = StaticRewardMdp(ts, hrz, state_to_pos, reward_dict)
     else:
         raise Exception("invalid AUG_MDP_TYPE")
     aug_mdp_timecost = timeit.default_timer() - aug_mdp_timer
@@ -117,11 +131,11 @@ def build_environment(m, n, h, init_state, pick_up, delivery, custom_task, stl_e
 
     # Get the DFA #
     dfa_start_time = timeit.default_timer()
-    pick_up_reg = xy_to_region(*pick_up)
+    pick_up_reg = xy_to_region(*pickup)
     delivery_reg = xy_to_region(*delivery)
     pick_up_str  = str(pick_up_reg)
     delivery_str = str(delivery_reg)
-    if custom_task != None:
+    if custom_task != 'None':
         phi = custom_task
         raise Exception("Error: Custom task time bound compatability checking is not yet implemented!")
     else:
@@ -182,7 +196,7 @@ def build_environment(m, n, h, init_state, pick_up, delivery, custom_task, stl_e
     # # Display some important info
     print('##### PICK-UP and DELIVERY MISSION #####' + "\n")
     print('Initial Location  : ' + str(init_state) + ' <---> Region ' + str(init_state_num))
-    print('Pick-up Location  : ' + str(pick_up) + ' <---> Region ' + pick_up_str)
+    print('Pick-up Location  : ' + str(pickup) + ' <---> Region ' + pick_up_str)
     print('Delivery Location : ' + str(delivery) + ' <---> Region ' + delivery_str)
     # print('Reward Locations  : ' + str(rewards) + ' <---> Regions ' + str(rewards_ts_indexes) + "\n")
     print('State Matrix : ')
@@ -201,7 +215,7 @@ def build_environment(m, n, h, init_state, pick_up, delivery, custom_task, stl_e
 
     return pa
 
-def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, samples):
+def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon):
 
     # Log state sequence and reward
     trajectory_reward_log = []
@@ -506,34 +520,39 @@ def main():
     with open('../configs/default.yaml', 'r') as f:
         config = yaml.safe_load(f)
 
-    env_config = config['environment']
-    height = env_config['height']
-    width = env_config['width']
-    depth = 1       # depth is 1 for 2D case, not tested with anything else
-
     # stl_expr = 'G[0,10]F[0,3](((x>1)&(x<2))&((y>3)&(y<4)))'
-    stl_expr = config['STL expression']
 
-    num_episodes = 100000      # of episodes
-    LEARN_RATE = 0.1
-    DISCOUNT   = 0.999
+    # Q-learning config
+    qlearn_cfg = config['Q-learning config']
+    num_episodes = qlearn_cfg['number of episodes']     # of episodes
+    learn_rate = qlearn_cfg['learning rate']
+    discount   = qlearn_cfg['discount']
 
-    explore_prob_start = 0.4
-    explore_prob_end = 0.07
+    explore_prob_start = qlearn_cfg['explore probability start']
+    explore_prob_end = qlearn_cfg['explore probability end']
     # start * decay^(num_eps - 1) = end
     explore_prob_decay = (explore_prob_end/explore_prob_start)**(1/(num_episodes-1))
 
-    eps_unc    = 0.03 # Uncertainity in actions, real uncertainnity in MDP
-    eps_unc_learning = 0.05 # Overestimated uncertainity used in learning
-    des_prob     = 0.85 # Minimum desired probability of satisfaction
+    # environment config
+    env_cfg = config['environment']
+    eps_unc    = env_cfg['real action uncertainty'] # Uncertainity in actions, real uncertainnity in MDP
+    eps_unc_learning = env_cfg['over estimated action uncertainty'] # Overestimated uncertainity used in learning
 
-    n_samples = 50 # Running the algorithm for different model based samples, 0 for model free learning
+    # TWTL constraint config
+    twtl_cfg = config['TWTL constraint']
+    des_prob = twtl_cfg['desired satisfaction probability'] # Minimum desired probability of satisfaction
+
+    mdp_type = config['MDP type']
+    if mdp_type == 'static rewards':
+        reward_cfg = config['static rewards']
+    else:
+        reward_cfg = config['aug-MDP rewards']
 
     # test_gen_time()
 
     prep_start_time = timeit.default_timer()
 
-    pa = build_environment(height, width, depth, INIT_STATE, PICKUP_STATE, DELIVERY_STATE, None, stl_expr)
+    pa = build_environment(env_cfg, twtl_cfg, mdp_type, reward_cfg)
 
     prune_start = timeit.default_timer()
     pa.prune_actions(eps_unc_learning, des_prob)
@@ -551,11 +570,12 @@ def main():
 
     print('learning with {} episodes'.format(num_episodes))
     timer = timeit.default_timer()
-    pi = Q_learning(pa, num_episodes, eps_unc, LEARN_RATE, DISCOUNT, explore_prob_decay, explore_prob_start, n_samples)
+    pi = Q_learning(pa, num_episodes, eps_unc, learn_rate, discount, explore_prob_decay, explore_prob_start)
     qlearning_time = timeit.default_timer() - timer
     print('learning time: {} seconds'.format(qlearning_time))
 
     # test policy
+    stl_expr = config['aug-MDP rewards']['STL expression']
     test_policy(pi, pa, stl_expr, eps_unc, 500)
 
 

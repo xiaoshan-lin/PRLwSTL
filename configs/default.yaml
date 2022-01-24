@@ -2,31 +2,36 @@
 environment:
   height: 2
   width: 6
+  init state: [0,0,0]
+  # action uncertainty is over estimated for learning
+  real action uncertainty: 0.03
+  over estimated action uncertainty: 0.05
 
-pickup/delivery task:
+
+TWTL constraint:
   pickup: [0,4,0]
   delivery: [0,1,0]
+  desired satisfaction probability: 0.85
+  custom task: None
 
-STL expression: G[0,10]F[0,3](((x>1)&(x<2))&((y>3)&(y<4)))
+MDP type: flag-MDP
+# MDP type: tau-MDP
+# MDP type: static rewards
 
-learning config:
-  init: [0,0,0]
+# Used for flag-MDP and tau-MDP augmentations
+aug-MDP rewards:
+  STL expression: G[0,10]F[0,3](((x>1)&(x<2))&((y>3)&(y<4)))
+
+static rewards:
+  time horizon: 30
+  reward dict: 
+    r13: 5
+    r6: 5
+
+Q-learning config:
   number of episodes: 100000
   learning rate: 0.1
   discount: 0.999
   # Exploration probability decay is calculated from the following values as (start * decay^(num_eps - 1) = end)
   explore probability start: 0.4
   explore probability end: 0.07
-  # action uncertainty is over estimated for learning
-  real action uncertainty: 0.03
-  learning action uncertainty: 0.05
-
-MDP augmentation: flag-MDP
-# MDP augmentation: tau-MDP
-# MDP augmentation: static rewards
-
-static rewards MDP config:
-  time horizon: 30
-  reward dict: 
-    r13: 5
-    r6: 5
