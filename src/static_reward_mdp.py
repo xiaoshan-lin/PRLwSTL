@@ -48,3 +48,6 @@ class StaticRewardMdp(lomap.Ts):
     def is_state(self, mdp_s):
         exists = (mdp_s in self.g.nodes())
         return exists
+
+    def get_null_state(self, mdp_s):
+        return mdp_s

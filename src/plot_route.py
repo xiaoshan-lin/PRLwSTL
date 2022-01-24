@@ -11,13 +11,14 @@ from matplotlib.colors import to_rgba
 import numpy as np
 
 
-FILE = '../output/test_policy_trajectory_log.txt'
-LINE = 9
-DIMS = (6,2)
+FILE = '../output/mdp_trajectory_log.txt'
+LINE = 10
+DIMS = (6,6)
 ENV_INFO = {
-    'Pickup':{'loc':'r4', 'color':'xkcd:light yellow'},
+    'Pickup':{'loc':'r28', 'color':'xkcd:light yellow'},
     'Delivery':{'loc':'r1', 'color':'cornflowerblue'},
-    'Region 1':{'loc':'r9', 'color':'tab:green'}
+    'Region 1':{'loc':'r9', 'color':'tab:green'},
+    'Region 2':{'loc':'r32', 'color':'tab:green'}
     # 'R2':{'loc':'r16', 'color':'green'}
 }
 
@@ -477,5 +478,5 @@ def save_learning_animation(file, vid_name, offset=0):
 
 if __name__ == '__main__':
     # main()
-    # do_animation()
-    save_learning_animation('../output/mdp_trajectory_log.txt', '../vids/updated_new_ep')
+    do_animation()
+    # save_learning_animation('../output/mdp_trajectory_log.txt', '../vids/updated_new_ep')

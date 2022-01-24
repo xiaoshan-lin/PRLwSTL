@@ -315,7 +315,8 @@ class AugPa(lomap.Model):
         new_ep_dict = {}
 
         def new_ep_states_recurse(pa_s, tau, t = 0, temp_dict = None, hist = None):
-            # Assumes that pa_s is the state chosen at t = 0
+
+            # Assumes that pa_s is the state chosen at t = 0 TODO: is this still correct?
             if temp_dict == None:
                 temp_dict = {}
             if hist == None:
@@ -328,6 +329,11 @@ class AugPa(lomap.Model):
             except KeyError:
                 pa_s = (pa_s[0], self.dfa.init.keys()[0] + 1)
                 neighbors = self.pruned_time_actions[t][pa_s]
+
+            # for eg static rewards
+            if tau == 1:
+                return {n: [[n]] for n in neighbors}
+
             if t == tau-1:
                 for n in neighbors:
                     if n in temp_dict:
@@ -345,8 +351,8 @@ class AugPa(lomap.Model):
             return temp_dict
 
         tau = self.aug_mdp.get_tau()
-        if tau < 2:
-            raise Exception("Tau < 2 not supported in initial state selection")
+        # if tau < 2:
+        #     raise Exception("Tau < 2 not supported in initial state selection")                    
 
         for pa_s in tqdm(self.get_states()):
             if pa_s not in new_ep_dict:

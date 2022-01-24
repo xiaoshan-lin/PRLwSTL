@@ -403,7 +403,7 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon):
 
     return pi
 
-def test_policy(pi, pa, stl_expr, eps_unc, iters):
+def test_policy(pi, pa, stl_expr, eps_unc, iters, mdp_type):
 
     print('Testing optimal policy with {} iterations'.format(iters))
 
@@ -435,6 +435,9 @@ def test_policy(pi, pa, stl_expr, eps_unc, iters):
     stl_sat_count = 0
     stl_rdeg_sum = 0
 
+    # count sum of rewards
+    reward_sum = 0
+
     for _ in range(iters):
         for t in range(t_init, time_steps):
             intended_z = pi[t][z]
@@ -455,6 +458,7 @@ def test_policy(pi, pa, stl_expr, eps_unc, iters):
             z = next_z
 
             mdp_traj.append(pa.get_mdp_state(next_z))
+            reward_sum += pa.reward(next_z)
 
         if pa.is_accepting_state(z):
             twtl_pass_count += 1
@@ -471,6 +475,8 @@ def test_policy(pi, pa, stl_expr, eps_unc, iters):
         stl_rdeg_sum += rdeg
 
         mdp_traj = [pa.get_mdp_state(p) for p in init_traj]
+        for p in init_traj:
+            reward_sum += pa.reward(p)
 
 
         if log:
@@ -490,8 +496,10 @@ def test_policy(pi, pa, stl_expr, eps_unc, iters):
     twtl_sat_rate = twtl_pass_count/iters
     stl_sat_rate = stl_sat_count/iters
     print("TWTL mission success: {} / {} = {}".format(twtl_pass_count, iters, twtl_pass_count/iters))
-    print("STL mission success: {} / {} = {}".format(stl_sat_count, iters, stl_sat_count/iters))
-    print("Avg robustness degree: {}".format(stl_rdeg_sum/iters))
+    print("Avg episode sum of rewards: {}".format(reward_sum/iters))
+    if mdp_type != 'static rewards':
+        print("STL mission success: {} / {} = {}".format(stl_sat_count, iters, stl_sat_count/iters))
+        print("Avg robustness degree: {}".format(stl_rdeg_sum/iters))
 
     return stl_sat_rate, twtl_sat_rate
 
@@ -576,7 +584,7 @@ def main():
 
     # test policy
     stl_expr = config['aug-MDP rewards']['STL expression']
-    test_policy(pi, pa, stl_expr, eps_unc, 500)
+    test_policy(pi, pa, stl_expr, eps_unc, 500, mdp_type)
 
 
 

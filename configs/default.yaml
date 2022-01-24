@@ -1,6 +1,6 @@
 
 environment:
-  height: 2
+  height: 6
   width: 6
   init state: [0,0,0]
   # action uncertainty is over estimated for learning
@@ -9,14 +9,14 @@ environment:
 
 
 TWTL constraint:
-  pickup: [0,4,0]
+  pickup: [4,4,0]
   delivery: [0,1,0]
   desired satisfaction probability: 0.85
   custom task: None
 
-MDP type: flag-MDP
+# MDP type: flag-MDP
 # MDP type: tau-MDP
-# MDP type: static rewards
+MDP type: static rewards
 
 # Used for flag-MDP and tau-MDP augmentations
 aug-MDP rewards:
@@ -25,8 +25,8 @@ aug-MDP rewards:
 static rewards:
   time horizon: 30
   reward dict: 
-    r13: 5
-    r6: 5
+    r9: 5
+    r32: 5
 
 Q-learning config:
   number of episodes: 100000
