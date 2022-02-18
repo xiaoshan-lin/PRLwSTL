@@ -21,17 +21,6 @@ from static_reward_mdp import StaticRewardMdp
 from STL import STL
 
 
-
-# AUG_MDP_TYPE = 'FLAG-MDP'
-# AUG_MDP_TYPE = 'TAU-MDP'
-# AUG_MDP_TYPE = 'STATIC-REWARD-MDP'
-# STATIC_MDP_HRZ = 30
-
-# MDP_REW_DICT = {
-#     'r13':5,
-#     'r6':5
-# }
-
 NORMAL_COLOR = '\033[0m'
 
 COLOR_DICT = {
@@ -42,13 +31,27 @@ COLOR_DICT = {
     'unintended'    : '\033[48;5;1m'    # red highlight
 }
 
-# INIT_STATE = (0,0,0)
-# PICKUP_STATE = (0,4,0)
-# DELIVERY_STATE = (0,1,0)    
 
-
-# def build_environment(m, n, h, init_state, pick_up, delivery, custom_task, stl_expr):
 def build_environment(env_cfg, twtl_cfg, mdp_type, reward_cfg):
+    """
+    Create the MDP, Augmented MDP, DFA, and Augmented Product MDP 
+
+    Parameters
+    ----------
+    env_cfg : dict
+        Environment configuration dictionary
+    twtl_cfg : dict
+        TWTL constraint configuration dictionary
+    mdp_type : string
+        The MDP augmentation type. Either 'static rewards', 'flag-MDP', or 'tau-MDP'
+    reward_cfg : dict
+        Reward configuration dictionary. Expected items depends on mdp_type
+    
+    Returns
+    -------
+    AugPa
+        An Augmented Product MDP
+    """
 
     # Get values from configs
     m = env_cfg['height']
@@ -69,7 +72,9 @@ def build_environment(env_cfg, twtl_cfg, mdp_type, reward_cfg):
 
     # m: length, n: width
 
-    # Create the environment and get the TS #
+    # =================================
+    # MDP Creation
+    # =================================
     ts_start_time = timeit.default_timer()
     disc = 1
     TS, obs_mat, state_mat = ce.create_ts(m,n,h)	
@@ -88,7 +93,10 @@ def build_environment(env_cfg, twtl_cfg, mdp_type, reward_cfg):
     init_state_str = 'r' + str(xy_to_region(*init_state))
     ts.init = {init_state_str: 1}
 
-    # create dictionary mapping mdp states to a position signal for use in satisfaction calculation
+    # =================================
+    # Signal Creation
+    # =================================
+    # create dictionary mapping mdp states to a position signal for use in robustness calculation
     # apply offset so pos is middle of region
     state_to_pos = dict()
     dims = ['x', 'y', 'z']
@@ -101,15 +109,9 @@ def build_environment(env_cfg, twtl_cfg, mdp_type, reward_cfg):
     
     ts_timecost =  timeit.default_timer() - ts_start_time
 
-    # Create a tau MDP by combining "past" TS states
-    # Variables to recreate
-    # nx.get_edge_attributes(ts_dict.g,'edge_weight')
-    # ts
-    # There seems to be a ts with only weights 1 and ts_dict with original weights
-    # Looks like it will be easiest to create another nx for weights rather than recreate desired output format
-
-    # tmdp, _ = tau_mdp(ts, ts_dict, tau)
-
+    # =================================
+    # Augmented MDP Creation
+    # =================================
     aug_mdp_timer = timeit.default_timer()
     if mdp_type == 'flag-MDP':
         stl_expr = reward_cfg['STL expression']
@@ -129,7 +131,9 @@ def build_environment(env_cfg, twtl_cfg, mdp_type, reward_cfg):
     ep_len = aug_mdp.get_hrz()
 
 
-    # Get the DFA #
+    # =================================
+    # DFA Creation
+    # =================================
     dfa_start_time = timeit.default_timer()
     pick_up_reg = xy_to_region(*pickup)
     delivery_reg = xy_to_region(*delivery)
@@ -153,47 +157,24 @@ def build_environment(env_cfg, twtl_cfg, mdp_type, reward_cfg):
     # nx.draw(dfa_inf.g, with_labels=True)
     # plt.show()
 
-    # Get the PA #
+    # =================================
+    # Augmented Product MDP Creation
+    # =================================
     pa_start_time = timeit.default_timer()
-    # alpha = 1       # with alpha = 1, all transitions are weighted equally in energy calculation
-    # nom_weight_dict = {}
-    # weight_dict = {}
-    # pa_or = ts_times_fsa(ts, dfa_inf) # Original pa
-    # real_init = tmdp.init
-    # pa_or = synth.ts_times_fsa(tmdp, dfa_inf) # Original pa
     pa_or = AugPa(aug_mdp, dfa_inf, ep_len)
-    # tmdp.init = real_init
-    # pa_or.g.remove_node(((None,) * tau, 0))
-
-    # TODO: incorporate this into Pa class
-    # edges_all = nx.get_edge_attributes(ts_dict.g,'edge_weight')
-    # edges_all = nx.get_edge_attributes(tmdp_weighted.g,'edge_weight')
-    # max_edge = max(edges_all, key=edges_all.get)
-    # norm_factor = edges_all[max_edge]
-    # for pa_edge in pa_or.g.edges():
-    #     mdp_s_1 = pa_or.get_mdp_state(pa_edge[0])
-    #     mdp_s_2 = pa_or.get_mdp_state(pa_edge[1])
-    #     edge = (mdp_s_1, mdp_s_2, 0)
-    #     nom_weight_dict[pa_edge] = edges_all[edge]/norm_factor
-    # nx.set_edge_attributes(pa_or.g, 'edge_weight', nom_weight_dict)
-    # nx.set_edge_attributes(pa_or.g, 'weight', 1)
     pa = copy.deepcopy(pa_or)	      # copy the pa
-    # time_weight = nx.get_edge_attributes(pa.g,'weight')
-    # edge_weight = nx.get_edge_attributes(pa.g,'edge_weight')
-    # for pa_edge in pa.g.edges():
-    #     weight_dict[pa_edge] = alpha*time_weight[pa_edge] + (1-alpha)*edge_weight[pa_edge]
-    # nx.set_edge_attributes(pa.g, 'new_weight', weight_dict)     # new_weight is used in energy computation
     pa_timecost =  timeit.default_timer() - pa_start_time
 
-    # Compute the energy of the states #
+    # Compute the energy of the states
     energy_time = timeit.default_timer()
     pa.compute_energy()
-
     energy_timecost =  timeit.default_timer() - energy_time
 
     init_state_num = init_state[0] * n + init_state[1]
 
-    # # Display some important info
+    # =================================
+    # Print information
+    # =================================
     print('##### PICK-UP and DELIVERY MISSION #####' + "\n")
     print('Initial Location  : ' + str(init_state) + ' <---> Region ' + str(init_state_num))
     print('Pick-up Location  : ' + str(pickup) + ' <---> Region ' + pick_up_str)
@@ -216,6 +197,33 @@ def build_environment(env_cfg, twtl_cfg, mdp_type, reward_cfg):
     return pa
 
 def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon):
+    """
+    Find the optimal policy using Q-learning
+
+    Parameters
+    ----------
+    pa : AugPa
+        The Augmented Product MDP
+    episodes : int
+        The number of episodes of learning
+    eps_unc : float
+        The real action uncertainty. This is the probability of an unintended transition.
+    learn_rate : float
+        The learning rate used in the Q update function
+    discount : float
+        The future value discount used in the Q update function
+    eps_decay : float
+        The decay rate of the exploration probability. 
+        (inital prob) * decay^(episodes - 1) = (final prob)
+    epsilon : float
+        The initial exploration probability
+
+    Returns
+    -------
+    dict
+        The optimal policy pi as a dict of dicts. The outer is keyed by the time step
+        and the inner is keyed by the Product MDP state. The value is the optimal next Product MDP state.
+    """
 
     # Log state sequence and reward
     trajectory_reward_log = []
@@ -367,31 +375,6 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon):
             for x in init_mdp_traj:
                 mdp_traj_log += '{:<4}'.format(x)
 
-            # write formatted q table to file
-            # with open(q_table_file, 'w') as f:
-            #     time = qtable.keys()
-            #     states = qtable[time[0]].keys()
-            #     t_fmt = '{:<3}'
-            #     s_fmt = q_fmt = '{:<6}'
-            #     for s in states:
-            #         nbrs = pa.g.neighbors(s)
-            #         nbrs_mdp = [pa.get_mdp_state(n) for n in nbrs]
-            #         f.write('\nstate = {}\n'.format(s))
-            #         # header
-            #         f.write((s_fmt * len(nbrs)).format(*nbrs_mdp))
-            #     for t in time:
-            #         f.write('\nt = {}\n'.format(t))
-
-            #     # time header
-            #     f.write('{:<50}'.format(""))
-            #     f.write(('{:<6}' * len(qtable)).format(*list(range(len(qtable)))))
-            #     f.write('\n')
-
-            #     for p,q_dict in qtable[0].items():
-            #         for q,val in q_dict.items():
-            #             f.write
-            #     for i,_ in enumerate qtable:
-            #         f.write('\n\nt = {}\n'.format(i))
 
     # print("TWTL success rate: {} / {} = {}".format(twtl_pass_count, episodes, twtl_pass_count/episodes))
 
@@ -404,8 +387,39 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon):
     return pi
 
 def test_policy(pi, pa, stl_expr, eps_unc, iters, mdp_type):
+    """
+    Test a policy for a certian number of episodes and print 
+        * The constraint mission success rate, 
+        * The average sum of rewards for each episode
+        * The objective (STL) mission success rate (if applicable)
+        * The average robustness degree of each episode (if applicable)
+    
+    Parameters
+    ----------
+    pi : dict
+        A policy as a dict of dicts. The outer is keyed by the time step
+        and the inner is keyed by the Product MDP state. The value is an adjacent Product MDP state.
+    pa : AugPA
+        The Augmented Product MDP
+    stl_expr : string
+        The STL expression that represents the objective TODO: make this optional for the case of static rewards
+    eps_unc : float
+        The real action uncertainty. This is the probability of an unintended transition.
+    iters : int
+        The number of episodes to test over
+    mdp_type : string
+        The MDP augmentation type. Either 'static rewards', 'flag-MDP', or 'tau-MDP'
 
-    print('Testing optimal policy with {} iterations'.format(iters))
+    Returns
+    -------
+    float
+        The STL satisfaction rate TODO: return this only when applicable
+    float
+        The TWTL satisfaction rate
+    
+    """
+
+    print('Testing optimal policy with {} episodes'.format(iters))
 
     mdp_log_file = '../output/test_policy_trajectory_log.txt'
     open(mdp_log_file, 'w').close() # clear file
@@ -523,6 +537,10 @@ def test_policy(pi, pa, stl_expr, eps_unc, iters, mdp_type):
 
 
 def main():
+    """
+    Main function. Read in configuration values, construct the Pruned Time-Product MDP, 
+    find the optimal policy, and test the optimal policy.
+    """
 
     # Load default config
     with open('../configs/default.yaml', 'r') as f:
@@ -530,6 +548,7 @@ def main():
 
     # stl_expr = 'G[0,10]F[0,3](((x>1)&(x<2))&((y>3)&(y<4)))'
 
+    # ==== Read in configuration values ====
     # Q-learning config
     qlearn_cfg = config['Q-learning config']
     num_episodes = qlearn_cfg['number of episodes']     # of episodes
@@ -558,10 +577,12 @@ def main():
 
     # test_gen_time()
 
+    # ==== Construct the Pruned Time-Product MDP ====
     prep_start_time = timeit.default_timer()
 
+    # Construct the Product MDP
     pa = build_environment(env_cfg, twtl_cfg, mdp_type, reward_cfg)
-
+    # Prune it at each time step
     prune_start = timeit.default_timer()
     pa.prune_actions(eps_unc_learning, des_prob)
     prune_end = gen_start = timeit.default_timer()
@@ -576,13 +597,14 @@ def main():
     print('Total environment creation time: {}'.format(prep_end_time - prep_start_time))
     print('')
 
+    # ==== Find the optimal policy ====
     print('learning with {} episodes'.format(num_episodes))
     timer = timeit.default_timer()
     pi = Q_learning(pa, num_episodes, eps_unc, learn_rate, discount, explore_prob_decay, explore_prob_start)
     qlearning_time = timeit.default_timer() - timer
     print('learning time: {} seconds'.format(qlearning_time))
 
-    # test policy
+    # ==== test policy ====
     stl_expr = config['aug-MDP rewards']['STL expression']
     test_policy(pi, pa, stl_expr, eps_unc, 500, mdp_type)
 
@@ -592,61 +614,3 @@ def main():
 if __name__ == '__main__':
     main()
 
-    # num_tests = 20
-    # stl_sat_rates = np.zeros(num_tests)
-    # twtl_sat_rates = np.zeros(num_tests)
-    # for i in range(num_tests):
-    #     pi = Q_learning(pa, num_episodes, eps_unc, LEARN_RATE, DISCOUNT, explore_prob_decay, explore_prob_start, n_samples)
-    #     stl_rate, twtl_rate = test_policy(pi, pa, stl_expr, eps_unc, 500)
-    #     stl_sat_rates[i] = stl_rate
-    #     twtl_sat_rates[i] = twtl_rate
-
-    # print('')
-    # print('After learning with {} episodes over {} tests:'.format(num_episodes, num_tests))
-    # print('Average TWTL satisfaction rate: {}'.format(np.mean(twtl_sat_rates)))
-    # print('Average STL satisfaction rate: {}'.format(np.mean(stl_sat_rates)))
-        
-
-
-    # generate trajectory
-    # z,t_init,init_traj = pa.initial_state_and_time((('r7', (0,)), 0))
-    # time_steps = pa.get_hrz()
-    # traj = []
-    # traj.extend(init_traj)
-    # for t in range(t_init, time_steps):
-    #     next_z = pi[t][z]
-    #     traj.append(next_z)
-    # print(traj)
-
-
-    # pi_file = '../output/optimal_policy.txt'
-    # with open(pi_file, 'w') as f:
-    #     fmt = '{:<23} ||  ' + '{:>22}' * len(pi) + '\n'
-    #     f.write(fmt.format('', *pi.keys()))
-    #     for s in sorted(pi[pi.keys()[0]].keys()):
-    #         s2 = [pi[t][s] for t in pi]
-    #         f.write(fmt.format(s, *s2))
-
-    # for ind_p in range(len(pick_up_state)):
-    #     for ind in range(len(delivery_state)):
-            # [i_s_i, pa_i, pa_s_i, pa_t_i, pa2ts_i, energy_pa_i, pick_up_i, delivery_i,  pick_ups_i, deliveries_i, pa_g_nodes_i] = prep_for_learning(ep_len, m, n, h, init_states, pick_up_state[ind_p], delivery_state[ind], custom_flag, custom_task, tau)
-            # i_s.append(i_s_i)
-            # rewards_pa.append(rewards_pa_i)
-            # pa.append(pa_i)
-            # pa_s.append(pa_s_i)
-            # pa_t.append(pa_t_i)
-            # pa2ts.append(pa2ts_i)
-            # energy_pa.append(energy_pa_i)
-            # pick_up.append(pick_up_i)
-            # delivery.append(delivery_i)
-            # pick_ups.append(pick_ups_i)
-            # deliveries.append(deliveries_i)
-            # [possible_acts_time_included_not_pruned_i, possible_acts_time_included_pruned_i, possible_next_states_time_included_not_pruned_i, possible_next_states_time_included_pruned_i, act_num_i] = get_possible_actions(pa_g_nodes_i,energy_pa_i, pa2ts_i, pa_s_i, pa_t_i, ep_len, Pr_des, eps_unc, pick_up_i)
-            # possible_acts_not_pruned.append(possible_acts_time_included_not_pruned_i)
-            # possible_acts_pruned.append(possible_acts_time_included_pruned_i)
-            # possible_next_states_not_pruned.append(possible_next_states_time_included_not_pruned_i)
-            # possible_next_states_pruned.append(possible_next_states_time_included_pruned_i)
-            # act_num.append(act_num_i)
-
-    # prep_timecost =  timeit.default_timer() - prep_start_time
-    # print('Total time for data prep. : ' + str(prep_timecost) + ' seconds \n')
