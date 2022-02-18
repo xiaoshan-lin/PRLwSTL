@@ -4,8 +4,8 @@ environment:
   width: 6
   init state: [0,0,0]
   # action uncertainty is over estimated for learning
-  real action uncertainty: 0.03
-  over estimated action uncertainty: 0.05
+  real action uncertainty: 0.10
+  over estimated action uncertainty: 0.11
 
 
 TWTL constraint:
@@ -29,7 +29,7 @@ static rewards:
     r32: 5
 
 Q-learning config:
-  number of episodes: 100000
+  number of episodes: 50000
   learning rate: 0.1
   discount: 0.999
   # Exploration probability decay is calculated from the following values as (start * decay^(num_eps - 1) = end)

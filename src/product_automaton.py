@@ -361,6 +361,15 @@ class AugPa(lomap.Model):
                 null_pa_s = (null_aug_mdp_s, self.dfa.init.keys()[0])
                 if null_pa_s not in new_ep_dict:
                     new_ep_dict[null_pa_s] = new_ep_states_recurse(null_pa_s, tau)
+                    if new_ep_dict[null_pa_s] == {}:
+                        # TODO: 
+                        raise Exception('\nError: Augmented Product MDP state {} at t=0 can not reach a state at t={} '.format(null_pa_s, tau) 
+                                + 'on the Pruned Augmented Time-Product MDP. This is most likely due to all potential actions being pruned. '
+                                + 'It is assumed that all states at t=0 can reach a state at t=tau so that, in the case of an STL objective, '
+                                + 'potential initial trajectories can be computed.\n'
+                                + 'This can be resolved by either (1) reducing the over estimated action uncertainty, (2) reducing the desired '
+                                + 'satisfaction probability (3) increasing the time horizon, or (4) modifying the constraint mission such that '
+                                + 'it can be completed in fewer time steps.')
                 new_ep_dict[pa_s] = new_ep_dict[null_pa_s]
                 # TODO maybe only key on null_pa_s to save ram for large state spaces, if it is indeed copying here
 
