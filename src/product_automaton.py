@@ -85,25 +85,32 @@ class AugPa(lomap.Model):
 
     def compute_energy(self):
 
-        #increase speed significantly by computing energy over pa of simple mdp and dfa
+        # Decrease compute time significantly by computing energy over pa of simple mdp and dfa
         #   and then projecting to this pa
 
         mdp = self.aug_mdp.get_mdp()
         simple_pa = synth.ts_times_fsa(mdp, self.dfa)
 
-        # compute_energy wants a "new_weight" attribute. Just weight all transitions the same.
-        new_weight_dict = {edge:1 for edge in simple_pa.g.edges()}
-        nx.set_edge_attributes(simple_pa.g, 'new_weight', new_weight_dict)
+        # make a virtual node as the end point using 0 for weight
+        simple_pa.g.add_edges_from([(p, 'virtual', {'weight':0}) for p in simple_pa.final])
 
-        synth.compute_energy(simple_pa)
-        mdp_energy_dict = nx.get_node_attributes(simple_pa.g, 'energy')
+        # compute minimum path costs (energy)
+        # NOTE: the simple_pa does not have weights. ts_times_fsa does not carry them over. ts_times_fsa must be reimplemented if weights on the PA are desired.
+        #       I specify the 'weight' attribute anyways for future sake.
+        # It seems that any node that cannot reach target is excluded from the returned dict. It does not raise an error as the docs state.
+        simple_energy_dict = nx.shortest_path_length(simple_pa.g, target='virtual', weight='weight')
+
+        # project onto full PA
         energy_dict = {}
         for p in self.get_states():
             mdp_s = self.get_mdp_state(p)
             dfa_s = self.get_dfa_state(p)
-            energy_dict[p] = mdp_energy_dict[(mdp_s, dfa_s)]
+            try:
+                energy_dict[p] = simple_energy_dict[(mdp_s, dfa_s)]
+            except KeyError:
+                energy_dict[p] = float('inf')
         self.energy_dict = energy_dict
-        nx.set_node_attributes(self.g, 'energy', energy_dict)
+        nx.set_node_attributes(self.g, energy_dict, name='energy')
 
     def get_energy(self, pa_state):
         return self.energy_dict[pa_state]
