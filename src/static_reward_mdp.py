@@ -1,4 +1,4 @@
-import lomap
+from pyTWTL import lomap
 
 class StaticRewardMdp(lomap.Ts):
 

@@ -1,5 +1,5 @@
 
-import lomap
+from pyTWTL import lomap
 import networkx as nx
 import numpy as np
 from STL import STL

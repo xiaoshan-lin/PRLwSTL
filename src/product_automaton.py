@@ -1,7 +1,7 @@
 from __future__ import division
 
-import lomap
-import synthesis as synth
+from pyTWTL import lomap
+import pyTWTL.synthesis as synth
 import networkx as nx
 import math
 import numpy as np

@@ -9,8 +9,6 @@
 #
 
 import numpy as np
-import StringIO
-import pdb, os, math
 
 def create_ts(m, n, h):
     ''' function to create the initial grid for the transition system given

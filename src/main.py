@@ -3,14 +3,15 @@ from __future__ import division # dividing two integers produces a float
 
 import create_environment as ce
 import timeit, time
-import lomap
-import twtl
-import synthesis as synth
 import networkx as nx
 import matplotlib.pyplot as plt
 import yaml
+import os
 
-from dfa import DFAType
+from pyTWTL.twtl_to_dfa import twtl_to_dfa
+from pyTWTL import lomap
+from pyTWTL import synthesis as synth
+
 import copy
 import numpy as np
 import random
@@ -30,6 +31,8 @@ COLOR_DICT = {
     'intended'      : '\033[49m',       # no highlight
     'unintended'    : '\033[48;5;1m'    # red highlight
 }
+
+this_file_path = os.path.dirname(os.path.abspath(__file__))
 
 
 def build_environment(env_cfg, twtl_cfg, mdp_type, reward_cfg):
@@ -79,7 +82,8 @@ def build_environment(env_cfg, twtl_cfg, mdp_type, reward_cfg):
     disc = 1
     TS, obs_mat, state_mat = ce.create_ts(m,n,h)	
     path = '../data/ts_' + str(m) + 'x' + str(n) + 'x' + str(h) + '_1Ag_1.txt'
-    paths = [path]
+    abs_path = os.path.join(this_file_path, path)
+    paths = [abs_path]
     # bases = {init_state: 'Base1'}
     bases = {}
     obstacles = []
@@ -146,7 +150,9 @@ def build_environment(env_cfg, twtl_cfg, mdp_type, reward_cfg):
         tf1 = int((ep_len-1)/2) # time bound
         tf2 = int(ep_len) - tf1 - 1
         phi = '[H^1 r' + pick_up_str + ']^[0, ' +  str(tf1) + '] * [H^1 r' + delivery_str + ']^[0,' + str(tf2) + ']'  # Construc the task according to pickup/delivery )^[0, ' + tf + ']'
-    _, dfa_inf, _ = twtl.translate(phi, kind=DFAType.Infinity, norm=True) # states and sim. time ex. phi = '([H^1 r47]^[0, 30] * [H^1 r31]^[0, 30])^[0, 30]' 
+    # _, dfa_inf, _ = twtl.translate(phi, kind=DFAType.Infinity, norm=True) # states and sim. time ex. phi = '([H^1 r47]^[0, 30] * [H^1 r31]^[0, 30])^[0, 30]' 
+    out = twtl_to_dfa(phi, kind='infinity', norm=True)
+    dfa_inf = out['infinity']
     dfa_timecost =  timeit.default_timer() - dfa_start_time # DFAType.Normal for normal, DFAType.Infinity for relaxed
 
     # add self edge to accepting state
@@ -543,7 +549,10 @@ def main():
     """
 
     # Load default config
-    with open('../configs/default.yaml', 'r') as f:
+    my_path = os.path.dirname(os.path.abspath(__file__))
+    def_cfg_rel_path = '../configs/default.yaml'
+    def_cfg_path = os.path.join(my_path, def_cfg_rel_path)
+    with open(def_cfg_path, 'r') as f:
         config = yaml.safe_load(f)
 
     # stl_expr = 'G[0,10]F[0,3](((x>1)&(x<2))&((y>3)&(y<4)))'

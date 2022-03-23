@@ -1,4 +1,4 @@
-import lomap
+from pyTWTL import lomap
 import itertools
 import numpy as np
 import networkx as nx
