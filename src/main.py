@@ -234,8 +234,8 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon):
     # Log state sequence and reward
     trajectory_reward_log = []
     mdp_traj_log = ''
-    tr_log_file = '../output/trajectory_reward_log.txt'
-    mdp_log_file = '../output/mdp_trajectory_log.txt'
+    tr_log_file = os.path.join(this_file_path, '../output/trajectory_reward_log.txt')
+    mdp_log_file = os.path.join(this_file_path, '../output/mdp_trajectory_log.txt')
     # q_table_file = '../output/live_q_table.txt'
     log = True
     # truncate file
@@ -427,7 +427,7 @@ def test_policy(pi, pa, stl_expr, eps_unc, iters, mdp_type):
 
     print('Testing optimal policy with {} episodes'.format(iters))
 
-    mdp_log_file = '../output/test_policy_trajectory_log.txt'
+    mdp_log_file = os.path.join(this_file_path, '../output/test_policy_trajectory_log.txt')
     open(mdp_log_file, 'w').close() # clear file
     log = True
 
