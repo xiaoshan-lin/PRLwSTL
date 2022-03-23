@@ -9,26 +9,7 @@ We consider a delivery drone that is supposed to achieve pick-up and delivery ta
 ---
 
 ## Setup
-The code in this repository is written and tested using Python 2.7 and Ubuntu 20.04. See below sections for Ubuntu and Mac OSX setup instructions.
-
-### Ubuntu
-If you do not have a Python 2.7 installation you can (hopefully) still get it from your package manager. On Ubuntu 20.04:
-```
-sudo apt install python2.7
-```
-Now you will need to install pip for python 2.7. On Ubuntu 20.04, this is no longer available from the package manager. You can instead install it directly from PyPA using the following:
-```
-wget https://bootstrap.pypa.io/pip/2.7/get-pip.py
-python2 get-pip.py
-```
-Next you have to install the dependencies. This can be done using the included `requirements.txt`.
-```
-python2 -m pip install -r requirements.txt
-```
-
-### Max OSX
-The working document for Mac setup instructions:
-https://docs.google.com/document/d/1Liqc0fYq_BstlCLVsLB2QN50RR047NFMK-fj47NKnas/edit
+TODO
 
 ---
 
