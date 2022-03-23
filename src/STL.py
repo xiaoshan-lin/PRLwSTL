@@ -32,7 +32,7 @@ class STL:
             if len(sig) < t+b:
                 raise Exception('Signal too short')
 
-            t_prime = range(t+a,t+b+1)
+            t_prime = list(range(t+a,t+b+1))
             inner_rdegs = [self.rdegree(sig, inner_phi, tp) for tp in t_prime]
 
             if op == 'F':

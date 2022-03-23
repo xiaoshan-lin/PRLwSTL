@@ -1,5 +1,5 @@
 
-from __future__ import division # dividing two integers produces a float
+ # dividing two integers produces a float
 
 import create_environment as ce
 import timeit, time
@@ -347,7 +347,7 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon):
         # Choose init state either randomly or by pi
         z = pa.get_null_state(z)
         if np.random.uniform() < epsilon:   # Explore
-            possible_init_zs = qtable[0][z].keys()
+            possible_init_zs = list(qtable[0][z].keys())
             init_z = random.choice(possible_init_zs)
             action_chosen_by = "explore"
         else:                               # Exploit

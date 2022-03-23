@@ -57,8 +57,8 @@ class BasePlot(object):
             a.axis([0,self.width,0,self.height])
             a.grid(True)
             a.grid(linewidth=2)
-            a.set_xticks(range(0,self.width))
-            a.set_yticks(range(0,self.height))
+            a.set_xticks(list(range(0,self.width)))
+            a.set_yticks(list(range(0,self.height)))
             # get rid of labels
             a.set_xticklabels([])
             a.set_yticklabels([])
@@ -73,7 +73,7 @@ class BasePlot(object):
             self._draw_env(env_info)
 
     def _draw_env(self,env_info):
-        for l,d in env_info.items():
+        for l,d in list(env_info.items()):
             r = d['loc'].replace('r', '')
             r = int(r)
             if l == 'Pickup':
@@ -337,7 +337,7 @@ class AnimPlot(BasePlot):
     def gen_smooth_path(self, r_path, numSteps):
         path = self._r_path_to_xy(r_path)
         self.init = path[0]
-        smooth_path = [zip(np.linspace(c[0],c2[0],numSteps), np.linspace(c[1],c2[1],numSteps)) for c,c2 in zip(path[:-1],path[1:])]
+        smooth_path = [list(zip(np.linspace(c[0],c2[0],numSteps), np.linspace(c[1],c2[1],numSteps))) for c,c2 in zip(path[:-1],path[1:])]
         # flatten
         smooth_path = [item for sub in smooth_path for item in sub] # Maybe someday Python will allow unpacking in list comprehensions...
         return smooth_path

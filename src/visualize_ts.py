@@ -25,8 +25,8 @@ class TSviz:
 
         self.ax.axis([0,self.xNum,0,self.yNum])
         self.ax.grid(True)
-        self.ax.set_xticks(range(0,self.xNum))
-        self.ax.set_yticks(range(0,self.yNum))
+        self.ax.set_xticks(list(range(0,self.xNum)))
+        self.ax.set_yticks(list(range(0,self.yNum)))
         self.ax.invert_yaxis()
 
         # print(type(self.fig))

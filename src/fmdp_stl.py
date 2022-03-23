@@ -30,13 +30,13 @@ class Fmdp(lomap.Ts):
 
         # set init state as mdp init state with 0 flags
         # TODO: Check that this is the correct initialization. May cause issues of mdp_init is a satisfying state.
-        mdp_init = mdp.init.keys()[0]
+        mdp_init = list(mdp.init.keys())[0]
         flag_init = (0.,) * self.fmdp_stl.n
         self.init = {(mdp_init, flag_init): 1}
         
     def build_states(self):
         mdp_states = self.mdp.g.nodes()
-        flag_set = [range(0,m+1) for m in self.flag_max]
+        flag_set = [list(range(0,m+1)) for m in self.flag_max]
         flag_product = itertools.product(*flag_set)
         self.flag_set = sorted(itertools.product(*flag_set))
         self.states = list(itertools.product(mdp_states, flag_product))
@@ -51,7 +51,7 @@ class Fmdp(lomap.Ts):
             mdp_s = fmdp_s[0]
             flags = fmdp_s[1]
             edge_attr_dict = mdp_tx_dict[mdp_s]                 # dict of attrs keyed by next state
-            next_mdp_s = edge_attr_dict.keys()                  # list of next states
+            next_mdp_s = list(edge_attr_dict.keys())                  # list of next states
             next_flags = [self.fmdp_stl.flag_update(flags, s) for s in next_mdp_s]   # next flag tuples
             # next_fmdp_s = {mf:next_mdp_s_dict[m] for mf in zip(next_mdp_s, next_flags)}
             for m,f in zip(next_mdp_s, next_flags):

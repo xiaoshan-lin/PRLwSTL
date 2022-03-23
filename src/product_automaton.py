@@ -1,4 +1,4 @@
-from __future__ import division
+
 
 from pyTWTL import lomap
 import pyTWTL.synthesis as synth
@@ -30,8 +30,8 @@ class AugPa(lomap.Model):
 
         # TODO: reset_init seems like a messy thing to do
         aug_mdp.reset_init()
-        aug_mdp_init = aug_mdp.init.keys()[0]
-        dfa_init = dfa.init.keys()[0]
+        aug_mdp_init = list(aug_mdp.init.keys())[0]
+        dfa_init = list(dfa.init.keys())[0]
 
         # May need to remove a certain aug mdp state
         to_remove = aug_mdp.get_state_to_remove()
@@ -48,11 +48,11 @@ class AugPa(lomap.Model):
 
     def _gen_null_states(self):
         null_aug_mdp_states = set([self.aug_mdp.get_null_state(s) for s in self.aug_mdp.g.nodes()])
-        null_pa_states = [(s, self.dfa.init.keys()[0]) for s in null_aug_mdp_states]
+        null_pa_states = [(s, list(self.dfa.init.keys())[0]) for s in null_aug_mdp_states]
         for i,z in enumerate(null_pa_states):
             if z not in self.get_states():
                 # Due to using label of s' in DFA update
-                z = (z[0], self.dfa.init.keys()[0] + 1)
+                z = (z[0], list(self.dfa.init.keys())[0] + 1)
                 if z not in self.get_states():
                     # if still an invalid state, something is wrong
                     raise Exception('Error: invalid null state: {}'.format(z))
@@ -124,7 +124,7 @@ class AugPa(lomap.Model):
 
         # create set of non-accepting states
         accepting_states = self.final
-        non_accepting_states = actions[0].keys()
+        non_accepting_states = list(actions[0].keys())
         for s in accepting_states:
             non_accepting_states.remove(s)
         
@@ -193,7 +193,7 @@ class AugPa(lomap.Model):
         # TODO: put some of this in an mdp class
         # region_to_xy = self.aug_mdp.sig_dict
         # TODO should be more generalized than using sig_dict
-        region_to_xy = {r:(d['x'],d['y']) for r,d in self.aug_mdp.sig_dict.iteritems()}
+        region_to_xy = {r:(d['x'],d['y']) for r,d in self.aug_mdp.sig_dict.items()}
         neighbors = self.g.neighbors(s1)
         xy_to_pa = {region_to_xy[self.get_mdp_state(pa_s)]:pa_s for pa_s in neighbors}
 
@@ -249,7 +249,7 @@ class AugPa(lomap.Model):
         # assume agent has remained in initial mdp state for timesteps 0 thru tau - 2
         # also give initial time that rewards are summed over in the q-learning problem formulation
         if init_pa_state == None:
-            z = self.init.keys()[0]
+            z = list(self.init.keys())[0]
         else:
             z = init_pa_state
             if z not in self.get_states():
@@ -261,7 +261,7 @@ class AugPa(lomap.Model):
             mdp_s = self.get_mdp_state(z)
             neighbors = self.g.neighbors(z)
             # choose next z with same mdp state
-            z = next(iter(filter(lambda next_z: self.get_mdp_state(next_z) == mdp_s, neighbors)))
+            z = next(iter([next_z for next_z in neighbors if self.get_mdp_state(next_z) == mdp_s]))
             init_traj.append(z)
         
         t_init = tau-1
@@ -296,10 +296,10 @@ class AugPa(lomap.Model):
     def get_null_state(self, pa_s):
         aug_mdp_s = self.get_aug_mdp_state(pa_s)
         null_aug_mdp_s = self.aug_mdp.get_null_state(aug_mdp_s)
-        null_pa_s = (null_aug_mdp_s, self.dfa.init.keys()[0])
+        null_pa_s = (null_aug_mdp_s, list(self.dfa.init.keys())[0])
         if null_pa_s not in self.get_states():
             # Due to using label of s' in DFA update
-            null_pa_s = (null_aug_mdp_s, self.dfa.init.keys()[0] + 1)
+            null_pa_s = (null_aug_mdp_s, list(self.dfa.init.keys())[0] + 1)
             if null_pa_s not in self.get_states():
                 raise Exception('Error: invalid null state: {}'.format(null_pa_s))
         return null_pa_s
@@ -332,7 +332,7 @@ class AugPa(lomap.Model):
             try:
                 neighbors = self.pruned_time_actions[t][pa_s]
             except KeyError:
-                pa_s = (pa_s[0], self.dfa.init.keys()[0] + 1)
+                pa_s = (pa_s[0], list(self.dfa.init.keys())[0] + 1)
                 neighbors = self.pruned_time_actions[t][pa_s]
 
             # for eg static rewards
@@ -363,7 +363,7 @@ class AugPa(lomap.Model):
             if pa_s not in new_ep_dict:
                 aug_mdp_s = self.get_aug_mdp_state(pa_s)
                 null_aug_mdp_s = self.aug_mdp.get_null_state(aug_mdp_s)
-                null_pa_s = (null_aug_mdp_s, self.dfa.init.keys()[0])
+                null_pa_s = (null_aug_mdp_s, list(self.dfa.init.keys())[0])
                 if null_pa_s not in new_ep_dict:
                     new_ep_dict[null_pa_s] = new_ep_states_recurse(null_pa_s, tau)
                     if new_ep_dict[null_pa_s] == {}:
@@ -381,7 +381,7 @@ class AugPa(lomap.Model):
         self.new_ep_dict = new_ep_dict
 
     def get_new_ep_states(self, pa_s):
-        new_ep_states = self.new_ep_dict[pa_s].keys()
+        new_ep_states = list(self.new_ep_dict[pa_s].keys())
         return new_ep_states
 
     def get_new_ep_trajectory(self, last_pa_s, init_pa_s):

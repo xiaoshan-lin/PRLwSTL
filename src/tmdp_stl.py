@@ -58,7 +58,7 @@ class Tmdp(lomap.Ts):
 
     def reset_init(self):
         self.g.remove_node(self.temp_init_state)
-        self.init = {((None,) * (self.tau-1)) + (self.mdp.init.keys()[0],) :1}
+        self.init = {((None,) * (self.tau-1)) + (list(self.mdp.init.keys())[0],) :1}
 
     def get_state_to_remove(self):
         return self.temp_init_state
@@ -69,19 +69,19 @@ class Tmdp(lomap.Ts):
 
     def build_states(self):
         # Make a dictionary of ts edges 
-        ts_edge_dict = {s:self.mdp.g.edge[s].keys() for s in self.mdp.g.edge.keys()}
+        ts_edge_dict = {s:list(self.mdp.g.edge[s].keys()) for s in list(self.mdp.g.edge.keys())}
         # ts_edge_dict[None] = self.mdp.g.edge.keys() + [None]
 
         # make list of tau mdp states where each state is represented by a tuple of mdp states
         tau = self.tmdp_stl.get_tau()
         states = []
-        for s in tqdm(ts_edge_dict.keys()):
+        for s in tqdm(list(ts_edge_dict.keys())):
             states.extend(  self.build_states_recurse([s], ts_edge_dict, tau))
 
         # states.remove((None,) * tau) # No state should end with a null
 
         # try and recreate process used in ts.read_from_file() except with tau mdp
-        self.init = {((None,) * (tau-1)) + (self.mdp.init.keys()[0],) :1}
+        self.init = {((None,) * (tau-1)) + (list(self.mdp.init.keys())[0],) :1}
         self.states = states
         self.ts_edge_dict = ts_edge_dict
 
