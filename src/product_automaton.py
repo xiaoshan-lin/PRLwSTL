@@ -23,7 +23,12 @@ class AugPa(lomap.Model):
         self.reward_cache = {}
 
         # generate
-        synth.ts_times_fsa(aug_mdp, dfa, self)
+        product_model = synth.ts_times_fsa(aug_mdp, dfa)
+        self.init = product_model.init
+        self.g = product_model.g
+        self.final = product_model.final
+
+        # TODO: reset_init seems like a messy thing to do
         aug_mdp.reset_init()
         aug_mdp_init = aug_mdp.init.keys()[0]
         dfa_init = dfa.init.keys()[0]

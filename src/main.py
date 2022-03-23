@@ -157,7 +157,7 @@ def build_environment(env_cfg, twtl_cfg, mdp_type, reward_cfg):
 
     # add self edge to accepting state
     # TODO probably don't hardcode the input set. see dfa_inf.alphabet
-    dfa_inf.g.add_edge(4,4, {'guard': '(else)', 'input':set([0,1,2,3]), 'label':'(else)', 'weight':0})
+    dfa_inf.g.add_edge(4,4, **{'guard': '(else)', 'input':set([0,1,2,3]), 'label':'(else)', 'weight':0})
     
     # plt.subplot()
     # nx.draw(dfa_inf.g, with_labels=True)
