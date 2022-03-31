@@ -1,18 +1,23 @@
 
 environment:
-  height: 6
-  width: 6
+  height: 8
+  width: 8
   init state: [0,0,0]
   # action uncertainty is over estimated for learning
-  real action uncertainty: 0.10
-  over estimated action uncertainty: 0.11
+  real action uncertainty: 0.1
+  over estimated action uncertainty: 0.3
+  obstacles: [[4,0,0],[5,0,0],[4,1,0],[5,1,0],[2,3,0],[2,4,0],[2,5,0],[3,3,0],[3,4,0],[3,5,0],[4,3,0],[4,4,0],[4,5,0]]
 
 
 TWTL constraint:
-  pickup: [4,4,0]
-  delivery: [0,1,0]
-  desired satisfaction probability: 0.85
-  custom task: None
+  # You can define region coordinates that will replace the respective name in the TWTL task.
+  # You will have issues if one name is a subset of another (i.e. 'base' and 'base2')
+  regions:
+    pickup: [5,6,0]
+    delivery: [7,1,0]
+  # custom task: '[H^1 pickup]^[0,20] * ([H^1 delivery1]^[0,20] | [H^1 delivery2]^[0,20]) * [H^1 base]^[0,20]'
+  custom task: 'None'
+  desired satisfaction probability: 0.9
   time horizon: 30
 
 # MDP type: flag-MDP
@@ -25,8 +30,17 @@ aug-MDP rewards:
 
 static rewards:
   reward dict: 
-    r9: 5
-    r32: 5
+    r0: 1
+    r1: 1
+    r2: 1
+    r8: 1
+    r9: 10
+    r10: 1
+    r16: 1
+    r17: 1
+    r18: 1
+    r58: 1
+    r59: 1
 
 Q-learning config:
   number of episodes: 50000

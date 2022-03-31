@@ -60,10 +60,11 @@ def build_environment(env_cfg, twtl_cfg, mdp_type, reward_cfg):
     n = env_cfg['width']
     h = 1   # depth: use only 2 dimensions
     init_state = env_cfg['init state']
+    obstacles = env_cfg['obstacles']
 
-    pickup = twtl_cfg['pickup']
-    delivery = twtl_cfg['delivery']
     custom_task = twtl_cfg['custom task']
+    if custom_task == 'None':
+        custom_task = None
 
     def xy_to_region(x,y,z):
         # x is down, y is across
@@ -85,7 +86,6 @@ def build_environment(env_cfg, twtl_cfg, mdp_type, reward_cfg):
     paths = [abs_path]
     # bases = {init_state: 'Base1'}
     bases = {}
-    obstacles = []
     obs_mat = ce.update_obs_mat(obs_mat, state_mat, m, obstacles, init_state)
     TS      = ce.update_adj_mat_3D(m, n, h, TS, obs_mat)
     ce.create_input_file(TS, state_mat, obs_mat, paths[0], bases, disc, m, n, h, 0)
@@ -117,17 +117,28 @@ def build_environment(env_cfg, twtl_cfg, mdp_type, reward_cfg):
     # DFA Creation
     # =================================
     dfa_start_time = timeit.default_timer()
-    pick_up_reg = xy_to_region(*pickup)
-    delivery_reg = xy_to_region(*delivery)
-    pick_up_str  = str(pick_up_reg)
-    delivery_str = str(delivery_reg)
-    if custom_task != 'None':
+    region_coords = twtl_cfg['regions']
+    if custom_task not in ['None', None]:
+        # Build the spec from regions in config
+
+        for r,c in region_coords.items():
+            region_num = xy_to_region(*c)
+            custom_task = custom_task.replace(r, 'r' + str(region_num))
         phi = custom_task
     else:
+        pickup = region_coords['pickup']
+        delivery = region_coords['delivery']
+
+        pick_up_reg = xy_to_region(*pickup)
+        delivery_reg = xy_to_region(*delivery)
+        pick_up_str  = str(pick_up_reg)
+        delivery_str = str(delivery_reg)
+
         twtl_horizon = twtl_cfg['time horizon']
         tf1 = int((twtl_horizon-1)/2) # time bound
         tf2 = int(twtl_horizon) - tf1 - 1
         phi = '[H^1 r' + pick_up_str + ']^[0, ' +  str(tf1) + '] * [H^1 r' + delivery_str + ']^[0,' + str(tf2) + ']'
+
     out = twtl_to_dfa(phi, kind='infinity', norm=True)
     dfa_inf = out['infinity']
     dfa_timecost =  timeit.default_timer() - dfa_start_time
@@ -144,10 +155,16 @@ def build_environment(env_cfg, twtl_cfg, mdp_type, reward_cfg):
     for s in dfa_inf.final:
         dfa_inf.g.add_edge(s,s, guard='(else)', input=input_set, label='(else)', weight=0)
     
+    # print(phi)
+    # A = nx.nx_agraph.to_agraph(dfa_inf.g)
+    # A.layout(prog='dot')
+    # A.draw('dfa.png')
+
     # plt.subplot()
     # nx.draw(dfa_inf.g, with_labels=True)
     # plt.show()
 
+    # exit()
 
     # =================================
     # Augmented MDP Creation
@@ -198,8 +215,13 @@ def build_environment(env_cfg, twtl_cfg, mdp_type, reward_cfg):
     # =================================
     print('##### PICK-UP and DELIVERY MISSION #####' + "\n")
     print('Initial Location  : ' + str(init_state) + ' <---> Region ' + str(init_state_num))
-    print('Pick-up Location  : ' + str(pickup) + ' <---> Region ' + pick_up_str)
-    print('Delivery Location : ' + str(delivery) + ' <---> Region ' + delivery_str)
+    if custom_task == None:
+        print('Pick-up Location  : ' + str(pickup) + ' <---> Region ' + pick_up_str)
+        print('Delivery Location : ' + str(delivery) + ' <---> Region ' + delivery_str)
+    else:
+        for r,c in region_coords.items():
+            rnum = xy_to_region(*c)
+            print(f'{r} : {c} <---> Region {rnum}')
     # print('Reward Locations  : ' + str(rewards) + ' <---> Regions ' + str(rewards_ts_indexes) + "\n")
     print('State Matrix : ')
     print(state_mat)

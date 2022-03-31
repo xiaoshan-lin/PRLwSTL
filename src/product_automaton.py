@@ -21,6 +21,7 @@ class AugPa(lomap.Model):
         self.dfa = dfa
         self.time_bound = time_bound
         self.reward_cache = {}
+        self.is_STL_objective = not (aug_mdp.name == 'Static Reward MDP')
 
         # generate
         product_model = synth.ts_times_fsa(aug_mdp, dfa)
@@ -321,8 +322,12 @@ class AugPa(lomap.Model):
 
     def gen_new_ep_states(self):
         # Generates a dictionary that maps each pa state (at end of ep) to possible pa states at t = tau-1, and each of those 
-        #   pa states to possible initial trajectories that could lead to that
+        #   PA states to possible initial trajectories that could lead to that
         # Each new episode starts with a state adjacent to the last state of the previous episode
+
+        # Nothing to do for non STL objective
+        if not self.is_STL_objective:
+            return
 
         new_ep_dict = {}
 
@@ -388,10 +393,14 @@ class AugPa(lomap.Model):
         self.new_ep_dict = new_ep_dict
 
     def get_new_ep_states(self, pa_s):
+        if not self.is_STL_objective:
+            raise RuntimeError('This function should not be called for non STL objective.')
         new_ep_states = list(self.new_ep_dict[pa_s].keys())
         return new_ep_states
 
     def get_new_ep_trajectory(self, last_pa_s, init_pa_s):
+        if not self.is_STL_objective:
+            raise RuntimeError('This function should not be called for non STL objective.')
         new_ep_trajs = self.new_ep_dict[last_pa_s][init_pa_s]
         selection_idx = np.random.choice(len(new_ep_trajs))
         selection = new_ep_trajs[selection_idx]

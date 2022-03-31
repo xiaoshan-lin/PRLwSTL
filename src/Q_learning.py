@@ -16,7 +16,7 @@ COLOR_DICT = {
 
 this_file_path = os.path.dirname(os.path.abspath(__file__))
 
-def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon):
+def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, log=True):
     """
     Find the optimal policy using Q-learning
 
@@ -37,6 +37,9 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon):
         (inital prob) * decay^(episodes - 1) = (final prob)
     epsilon : float
         The initial exploration probability
+    log : boolean
+        Whether log files should be created
+        default is True
 
     Returns
     -------
@@ -83,14 +86,14 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon):
             else:
                 # Empty action set. No actions available in the pruned time pa.
                 pi[t][p] = None
-        # pi[t] = {p:max(qtable[t][p], key=qtable[t][p].get) for p in pa.pruned_time_actions[t]}
 
     # Make an entry in q table for learning initial states and initialize pi
-    qtable[0] = {p:{} for p in pa.get_null_states()}
-    pi[0] = {}
-    for p in qtable[0]:
-        qtable[0][p] = {q:init_val + np.random.normal(0,0.0001) for q in pa.get_new_ep_states(p)}
-        pi[0][p] = max(qtable[0][p], key=qtable[0][p].get)
+    if pa.is_STL_objective:
+        qtable[0] = {p:{} for p in pa.get_null_states()}
+        pi[0] = {}
+        for p in qtable[0]:
+            qtable[0][p] = {q:init_val + np.random.normal(0,0.0001) for q in pa.get_new_ep_states(p)}
+            pi[0][p] = max(qtable[0][p], key=qtable[0][p].get)
 
     if log:
         trajectory_reward_log.extend(init_traj)
@@ -124,6 +127,7 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon):
                 action_result = 'unintended'
 
             reward = pa.reward(next_z)
+            # TODO: shouldn't this update based on probable_z as that was the "action"?
             cur_q = qtable[t][z][next_z]
             if t+1 == time_steps:
                 max_future_q = 0
@@ -157,27 +161,38 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon):
         ep_rewards[ep] = ep_rew_sum
         ep_rew_sum = 0
 
-        # choose initial trajectory for next episode
-        # Choose init state either randomly or by pi
         z = pa.get_null_state(z)
-        if np.random.uniform() < epsilon:   # Explore
-            possible_init_zs = list(qtable[0][z].keys())
-            init_z = random.choice(possible_init_zs)
-            action_chosen_by = "explore"
-        else:                               # Exploit
-            init_z = pi[0][z]
-            action_chosen_by = "exploit"
 
-        init_traj = pa.get_new_ep_trajectory(z, init_z)
+        if pa.is_STL_objective:
+            #FIXME: pi[0][z] could be None
+            # Choose init state either randomly or by pi
+            if np.random.uniform() < epsilon:   # Explore
+                possible_init_zs = list(qtable[0][z].keys())
+                init_z = random.choice(possible_init_zs)
+                action_chosen_by = "explore"
+            else:                               # Exploit
+                init_z = pi[0][z]
+                action_chosen_by = "exploit"
 
-        # Update qtable and optimal policy
-        reward = pa.reward(init_z)
-        cur_q = qtable[0][z][init_z]
-        future_qs = qtable[t_init][init_z]
-        max_future_q = max(future_qs.values())
-        new_q = (1 - learn_rate) * cur_q + learn_rate * (reward + discount * max_future_q)
-        qtable[0][z][init_z] = new_q
-        pi[0][z] = max(qtable[0][z], key=qtable[0][z].get)
+            init_traj = pa.get_new_ep_trajectory(z, init_z)
+
+            # Update qtable and optimal policy
+            reward = pa.reward(init_z)
+            cur_q = qtable[0][z][init_z]
+            future_qs = qtable[t_init][init_z]
+            max_future_q = max(future_qs.values())
+            new_q = (1 - learn_rate) * cur_q + learn_rate * (reward + discount * max_future_q)
+            qtable[0][z][init_z] = new_q
+            pi[0][z] = max(qtable[0][z], key=qtable[0][z].get)
+
+        else:
+            # static rewards: Randomly choose adjacent state for beginning of next ep
+            init_states = list(pa.g.neighbors(z))
+            if init_states == []:
+                raise RuntimeError('ERROR: No neighbors of final state? Actions not reversible?')
+            init_z = random.choice(init_states)
+            # Don't want any progress toward TWTL satisfaction on this transition
+            init_z = pa.get_null_state(init_z)
 
         z = init_z
 
@@ -299,15 +314,23 @@ def test_policy(pi, pa, stl_expr, eps_unc, iters, mdp_type):
             twtl_pass_count += 1
 
         z_null = pa.get_null_state(z)
-        z_init = pi[0][z_null]
-        init_traj = pa.get_new_ep_trajectory(z,z_init)
+        rdeg = 0
+        if pa.is_STL_objective:
+            z_init = pi[0][z_null]
+            init_traj = pa.get_new_ep_trajectory(z,z_init)
+            mdp_sig = [pa.aug_mdp.sig_dict[x] for x in mdp_traj]
+            rdeg = parser.rdegree(mdp_sig)
+            if rdeg > 0:
+                stl_sat_count += 1
+            stl_rdeg_sum += rdeg
+        else:
+            # Choose random adjacent
+            init_states = list(pa.g.neighbors(z))
+            z_init = random.choice(init_states)
+            z_init = pa.get_null_state(z_init)
+            init_traj = [z_init]
         z = z_init
 
-        mdp_sig = [pa.aug_mdp.sig_dict[x] for x in mdp_traj]
-        rdeg = parser.rdegree(mdp_sig)
-        if rdeg > 0:
-            stl_sat_count += 1
-        stl_rdeg_sum += rdeg
 
         mdp_traj = [pa.get_mdp_state(p) for p in init_traj]
         for p in init_traj:
