@@ -13,6 +13,7 @@ TWTL constraint:
   delivery: [0,1,0]
   desired satisfaction probability: 0.85
   custom task: None
+  time horizon: 30
 
 # MDP type: flag-MDP
 # MDP type: tau-MDP
@@ -23,7 +24,6 @@ aug-MDP rewards:
   STL expression: G[0,10]F[0,3](((x>1)&(x<2))&((y>3)&(y<4)))
 
 static rewards:
-  time horizon: 30
   reward dict: 
     r9: 5
     r32: 5
