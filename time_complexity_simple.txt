@@ -1,0 +1,52 @@
+t: time horizon
+r: tau
+p: episodes
+n: mdp states
+e: mdp edges
+d: dfa states
+x: Augmented MDP states
+ : TMDP: n^r
+ : FMDP: n*r
+ : MDP:  n
+
+Considered constant:
+    - number of characters in STL expression
+    - Number of small phi in Flag STL
+
+Considered maximum
+    - Each node of MDP has edges to all other nodes
+
+build_environment:
+
+    # MDP Creation: O(n^2 + e)
+	create_ts : 		O(n)
+	update_obs_mat : 	O(#obstacles) -> O(n)
+	update_adj_mat_3D : 	O(n)
+	create_input_file : 	O((n)^2 + n)
+	read_from_file :	O(n)
+	expand_duration_ts :	O(e)
+
+    # Position signal
+	state_to_pos : 	O(n)
+
+    # Augmented MDP Creation
+    TMDP :      O(n^r)
+	FMDP :		O(r*n^2)
+    MDP  :      O(1)
+
+    # DFA Creation
+    O(2^(|phi|+|AP|))
+
+    # Augmented Product MDP Creation
+    AugPA :             O(nxd^2)
+    compute_energy :    O((nd)^2 + (nd+ed)*log(nd) + xd)
+
+    prune_actions :     O(txn^2)
+    gen_new_ep_states : O(n*n^r)    # not for MDP
+
+    Q_learning:     O(t*(x+p))
+    test policy:    O(t)
+
+Total time complexity: 
+
+    O()
