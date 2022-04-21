@@ -13,6 +13,8 @@ class FmdpState:
 class Fmdp(lomap.Ts):
 
     def __init__(self, mdp, stl_expr, mdp_sig_dict):
+        # O(tau*n*a)
+        # with constant number of small phi, tau ~ #flags
         lomap.Ts.__init__(self, directed=True, multi=False)
         self.name = "Flag MDP"
         self.mdp = mdp
@@ -35,6 +37,7 @@ class Fmdp(lomap.Ts):
         self.init = {(mdp_init, flag_init): 1}
         
     def build_states(self):
+        # O(n*tau)
         mdp_states = self.mdp.g.nodes()
         flag_set = [list(range(0,m+1)) for m in self.flag_max]
         flag_product = itertools.product(*flag_set)
@@ -44,6 +47,7 @@ class Fmdp(lomap.Ts):
         self.g.add_nodes_from(node_attrs)
 
     def build_transitions(self):
+        # O(a*n*tau^{N_phi}) worst case
         
         mdp_tx_dict = nx.convert.to_dict_of_dicts(self.mdp.g)
         edge_list = []
@@ -125,6 +129,7 @@ class Fmdp(lomap.Ts):
 class FmdpStl:
 
     def __init__(self, stl_expr, mdp_sig_dict = None):
+        # About O(1)
         # format
         # limited to depth of 2 {F,G}
         # Cannot be depth 1 i.e. G[0,2]x<3
@@ -190,6 +195,7 @@ class FmdpStl:
         return self.big_phi[0]
 
     def flag_update(self, this_flags, next_mdp_s):
+        # O(1) assuming constant # of small phi
         flags = this_flags
         sig = self.sig_dict[next_mdp_s]
 

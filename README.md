@@ -106,9 +106,9 @@ deactivate
 ## Usage
 Running `main.py` in the `src` directory will use Q-learning to find the optimal policy for a simple pick-up and delivery problem with static rewards. The code will print out some time performance information and, at the end, the results of testing the found optimal policy. Running this code will also make some files in the `output` directory. You can look at `mdp_trajectory_log.txt` with an ANSI escape code compatible text viewer (I use `less -R`) for some colors that represent what is happening during learning. You can find at the top of `main.py` what each color represents. 
 
-Next you can run `plot_route.py` which will show a nice animation of a route generated during policy test.
+Next you can run `plot_route.py` which will show a nice animation of a route generated during policy test. The animation is not connected to this config file yet, so you will have to edit that file if you want to animate a different problem.
 
-You can edit the problem and learning parameters in `config/default.yaml`. The animation is not connected to this config file yet, so you will have to edit that file if you want to animate a different problem.
+You can edit the environment, TWTL, STL, rewards, and learning parameters in `config/default.yaml`. All options are explained in that file.
 
 <br />
 

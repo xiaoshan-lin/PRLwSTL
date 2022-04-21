@@ -24,6 +24,7 @@ class AugPa(lomap.Model):
         self.is_STL_objective = not (aug_mdp.name == 'Static Reward MDP')
 
         # generate
+        # Following has O(xda*2^|AP|) worst case. O(xd) for looping through all PA states * O(a * 2^|AP|) for adjacent MDP and DFA states
         product_model = synth.ts_times_fsa(aug_mdp, dfa)
         self.init = product_model.init
         self.g = product_model.g
@@ -56,7 +57,7 @@ class AugPa(lomap.Model):
                 z = (z[0], list(self.dfa.init.keys())[0] + 1)
                 if z not in self.get_states():
                     # if still an invalid state, something is wrong
-                    raise Exception('Error: invalid null state: {}'.format(z))
+                    raise Exception('Error: state not in Product MDP: {}'.format(z))
                 null_pa_states[i] = z
 
         return null_pa_states
@@ -90,6 +91,7 @@ class AugPa(lomap.Model):
         #   and then projecting to this pa
 
         mdp = self.aug_mdp.get_mdp()
+        # Following is O(nda*2^|AP|)
         simple_pa = synth.ts_times_fsa(mdp, self.dfa)
 
         # make a virtual node as the end point using 0 for weight
@@ -99,6 +101,8 @@ class AugPa(lomap.Model):
         # NOTE: the simple_pa does not have weights. ts_times_fsa does not carry them over. ts_times_fsa must be reimplemented if weights on the PA are desired.
         #       I specify the 'weight' attribute anyways for future sake.
         # It seems that any node that cannot reach target is excluded from the returned dict. It does not raise an error as the docs state.
+        # complexity of dijkstra using min-priority que is O((v+e)log(v)) with verticies v and edges e. This can be simplified to O(e*log(v)) if the graph is connected.
+        # O(nad*log(nd)). With nd nodes, nad edges, because the product MDP uses the MDP transition function with edges n*a, applied d times.
         simple_energy_dict = nx.shortest_path_length(simple_pa.g, target='virtual', weight='weight')
 
         # project onto full PA
@@ -117,6 +121,9 @@ class AugPa(lomap.Model):
         return self.energy_dict[pa_state]
 
     def prune_actions(self, eps_uncertainty, des_prob):
+        # Time complexity is O(txa^2) 
+        # Loop through all time product states, all neighbors, all low probability transitions.
+        # In the current implementation, there cannot be more low prob  transitions than actions
 
         # TODO actually use actions and not next state
 
@@ -321,6 +328,7 @@ class AugPa(lomap.Model):
         return self.aug_mdp.sat(aug_mdp_s)
 
     def gen_new_ep_states(self):
+        # Time complexity is O(x*n^r)
         # Generates a dictionary that maps each pa state (at end of ep) to possible pa states at t = tau-1, and each of those 
         #   PA states to possible initial trajectories that could lead to that
         # Each new episode starts with a state adjacent to the last state of the previous episode

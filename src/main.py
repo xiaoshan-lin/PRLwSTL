@@ -62,7 +62,7 @@ def build_environment(env_cfg, twtl_cfg, mdp_type, reward_cfg):
     init_state = env_cfg['init state']
     obstacles = env_cfg['obstacles']
 
-    custom_task = twtl_cfg['custom task']
+    custom_task = twtl_cfg['TWTL task']
     if custom_task == 'None':
         custom_task = None
 
@@ -139,8 +139,9 @@ def build_environment(env_cfg, twtl_cfg, mdp_type, reward_cfg):
         tf2 = int(twtl_horizon) - tf1 - 1
         phi = '[H^1 r' + pick_up_str + ']^[0, ' +  str(tf1) + '] * [H^1 r' + delivery_str + ']^[0,' + str(tf2) + ']'
 
-    out = twtl_to_dfa(phi, kind='infinity', norm=True)
-    dfa_inf = out['infinity']
+    kind = twtl_cfg['DFA kind']
+    out = twtl_to_dfa(phi, kind=kind, norm=True)
+    dfa_inf = out[kind]
     dfa_timecost =  timeit.default_timer() - dfa_start_time
     bounds = out['bounds']
     dfa_horizon = bounds[-1]

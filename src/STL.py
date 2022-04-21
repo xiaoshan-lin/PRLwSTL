@@ -2,6 +2,7 @@ PRED_VARS = 'xy'
 
 class STL:
     def __init__(self, stl_expr):
+        # O(len(stl_expr))? About O(1)
 
         self.stl_expr = stl_expr
         self.parsed_tup = self.parse_stl(stl_expr)
@@ -63,6 +64,8 @@ class STL:
             raise Exception('Unknown identifier: {}'.format(idfr))
 
     def parse_stl(self, phi):
+        # Not clear what the time complexity is, but not significant
+        # O(len(phi))?
         if phi[0] in 'FG':
             temporal_op = phi[0]
             end = phi.index(']')
@@ -108,6 +111,7 @@ class STL:
         """
         Returns a tuple of expressions seperated by an 'and' (&) or 'or' (|) 
         """
+        # O(len(phi))
 
         parts = []
         depth = 0

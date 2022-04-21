@@ -47,6 +47,7 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
         The optimal policy pi as a dict of dicts. The outer is keyed by the time step
         and the inner is keyed by the Product MDP state. The value is the optimal next Product MDP state.
     """
+    # Time complexity is O(tx+pt) = O(t(x+p))
 
     # Log state sequence and reward
     trajectory_reward_log = []
@@ -254,6 +255,7 @@ def test_policy(pi, pa, stl_expr, eps_unc, iters, mdp_type):
         The TWTL satisfaction rate
     
     """
+    # Time complexity is O(t)
 
     print('Testing optimal policy with {} episodes'.format(iters))
 

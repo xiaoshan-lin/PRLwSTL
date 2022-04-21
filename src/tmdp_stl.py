@@ -7,6 +7,7 @@ from tqdm import tqdm
 
 class Tmdp(lomap.Ts):
     def __init__(self, mdp, stl_expr, mdp_sig_dict):
+        # O(n^tau) worst case
         lomap.Ts.__init__(self, directed=True, multi=False)
 
         self.name = 'Tau MDP'
@@ -68,6 +69,7 @@ class Tmdp(lomap.Ts):
     #     return self.wrap_dict[mdp_s]
 
     def build_states(self):
+        # O(n*a^(tau-1)) worst case
         # Make a dictionary of ts edges 
         ts_edge_dict = {s:list(self.mdp.g.edge[s].keys()) for s in list(self.mdp.g.edge.keys())}
         # ts_edge_dict[None] = self.mdp.g.edge.keys() + [None]
@@ -108,6 +110,7 @@ class Tmdp(lomap.Ts):
 
 
     def build_transitions(self):
+        # O(n*a) worst case
 
         # create dict of dicts representing edges and attributes of each edge to construct the nx graph from
         # attributes are based on the mdp edge between the last (current) states in the tau mdp sequence
@@ -118,7 +121,6 @@ class Tmdp(lomap.Ts):
             # tmdp states are adjacent if they share the same (offset) history. "current" state transition is implied valid 
             # based on the set of names created
             if tau > 1:
-                #TODO use next_mdp_states instead of conditional
                 # edge_dict[x1] = {x2:edge_attrs[x2[-1]] for x2 in self.states if x1[1:] == x2[:-1]}
                 edge_dict[x1] = {x1[1:]+(s2,):edge_attrs[s2] for s2 in self.mdp.g.neighbors(x1[-1])}
             else:
@@ -176,6 +178,7 @@ class Tmdp(lomap.Ts):
 
 class TmdpStl:
     def __init__(self, stl_expr, ts_sig_dict):
+        # O(len(stl_expr))? about O(1)
         self.expr = stl_expr
         self.ts_sig_dict = ts_sig_dict
         # self.rdegree_lse_cache = {}  # cache dict
