@@ -1,25 +1,21 @@
 
 import create_environment as ce
-import timeit, time
-import networkx as nx
-import matplotlib.pyplot as plt
+import timeit
 import yaml
 import os
+import copy
 
-from pyTWTL.twtl_to_dfa import twtl_to_dfa
 from pyTWTL import lomap
 from pyTWTL import synthesis as synth
 
-import copy
-import numpy as np
-import random
 from tmdp_stl import Tmdp
 from product_automaton import AugPa
 from fmdp_stl import Fmdp
+from dfa import create_dfa, save_dfa
 from static_reward_mdp import StaticRewardMdp
-from STL import STL
 import Q_learning as ql
 
+CONFIG_PATH = '../configs/default_static.yaml'
 
 NORMAL_COLOR = '\033[0m'
 
@@ -61,10 +57,6 @@ def build_environment(env_cfg, twtl_cfg, mdp_type, reward_cfg):
     h = 1   # depth: use only 2 dimensions
     init_state = env_cfg['init state']
     obstacles = env_cfg['obstacles']
-
-    custom_task = twtl_cfg['TWTL task']
-    if custom_task == 'None':
-        custom_task = None
 
     def xy_to_region(x,y,z):
         # x is down, y is across
@@ -117,55 +109,11 @@ def build_environment(env_cfg, twtl_cfg, mdp_type, reward_cfg):
     # DFA Creation
     # =================================
     dfa_start_time = timeit.default_timer()
-    region_coords = twtl_cfg['regions']
-    if custom_task not in ['None', None]:
-        # Build the spec from regions in config
-
-        for r,c in region_coords.items():
-            region_num = xy_to_region(*c)
-            custom_task = custom_task.replace(r, 'r' + str(region_num))
-        phi = custom_task
-    else:
-        pickup = region_coords['pickup']
-        delivery = region_coords['delivery']
-
-        pick_up_reg = xy_to_region(*pickup)
-        delivery_reg = xy_to_region(*delivery)
-        pick_up_str  = str(pick_up_reg)
-        delivery_str = str(delivery_reg)
-
-        twtl_horizon = twtl_cfg['time horizon']
-        tf1 = int((twtl_horizon-1)/2) # time bound
-        tf2 = int(twtl_horizon) - tf1 - 1
-        phi = '[H^1 r' + pick_up_str + ']^[0, ' +  str(tf1) + '] * [H^1 r' + delivery_str + ']^[0,' + str(tf2) + ']'
-
-    kind = twtl_cfg['DFA kind']
-    out = twtl_to_dfa(phi, kind=kind, norm=True)
-    dfa_inf = out[kind]
+    dfa, dfa_horizon, dfa_print_string = create_dfa(twtl_cfg, env_cfg)
+    if twtl_cfg['save dfa'] == True:
+        save_dfa(dfa)
     dfa_timecost =  timeit.default_timer() - dfa_start_time
-    bounds = out['bounds']
-    dfa_horizon = bounds[-1]
-    if custom_task == None and dfa_horizon != twtl_horizon:
-        raise RuntimeError(f'Received unexpected time bound from DFA. DFA horizon: {dfa_horizon}, expected: {twtl_horizon}.')
-    else:
-        twtl_horizon = dfa_horizon
 
-    # add self edge to accepting state
-    # All observation cases in accepting state should result in self edge
-    input_set = dfa_inf.alphabet    
-    for s in dfa_inf.final:
-        dfa_inf.g.add_edge(s,s, guard='(else)', input=input_set, label='(else)', weight=0)
-    
-    # print(phi)
-    # A = nx.nx_agraph.to_agraph(dfa_inf.g)
-    # A.layout(prog='dot')
-    # A.draw('dfa.png')
-
-    # plt.subplot()
-    # nx.draw(dfa_inf.g, with_labels=True)
-    # plt.show()
-
-    # exit()
 
     # =================================
     # Augmented MDP Creation
@@ -187,20 +135,20 @@ def build_environment(env_cfg, twtl_cfg, mdp_type, reward_cfg):
 
     mdp_horizon = aug_mdp.get_hrz()
 
-    if mdp_horizon != twtl_horizon:
+    if mdp_horizon != dfa_horizon:
         if mdp_type == 'static rewards':
             raise RuntimeError(f'Static rewards MDP has an incorrect time horizon. This is likely \
-                an implementation error. MDP horizon: {mdp_horizon}, TWTL horizon: {twtl_horizon}')
+                an implementation error. MDP horizon: {mdp_horizon}, TWTL horizon: {dfa_horizon}')
         else:
             raise ValueError(f'STL and TWTL time horizon mismatch. Please adjust either spec \
-                so the horizons match. STL time horizon: {mdp_horizon}, TWTL time horizon: {twtl_horizon}')
+                so the horizons match. STL time horizon: {mdp_horizon}, TWTL time horizon: {dfa_horizon}')
 
 
     # =================================
     # Augmented Product MDP Creation
     # =================================
     pa_start_time = timeit.default_timer()
-    pa_or = AugPa(aug_mdp, dfa_inf, twtl_horizon)
+    pa_or = AugPa(aug_mdp, dfa, dfa_horizon)
     pa = copy.deepcopy(pa_or)	      # copy the pa
     pa_timecost =  timeit.default_timer() - pa_start_time
 
@@ -216,19 +164,12 @@ def build_environment(env_cfg, twtl_cfg, mdp_type, reward_cfg):
     # =================================
     print('##### PICK-UP and DELIVERY MISSION #####' + "\n")
     print('Initial Location  : ' + str(init_state) + ' <---> Region ' + str(init_state_num))
-    if custom_task == None:
-        print('Pick-up Location  : ' + str(pickup) + ' <---> Region ' + pick_up_str)
-        print('Delivery Location : ' + str(delivery) + ' <---> Region ' + delivery_str)
-    else:
-        for r,c in region_coords.items():
-            rnum = xy_to_region(*c)
-            print(f'{r} : {c} <---> Region {rnum}')
+    print(dfa_print_string)
     # print('Reward Locations  : ' + str(rewards) + ' <---> Regions ' + str(rewards_ts_indexes) + "\n")
     print('State Matrix : ')
     print(state_mat)
     print("\n")
-    print('Mission Duration  : ' + str(twtl_horizon) + ' time steps')
-    print('TWTL Task : ' + phi + "\n")
+    print('Mission Duration  : ' + str(dfa_horizon) + ' time steps')
     print('Time PA state size: {}\n'.format(pa.get_tpa_state_size()))
     print('Time Cost:')
     print('TS creation time (s):            {:<7}'.format(ts_timecost))
@@ -269,7 +210,7 @@ def main():
 
     # Load default config
     my_path = os.path.dirname(os.path.abspath(__file__))
-    def_cfg_rel_path = '../configs/default.yaml'
+    def_cfg_rel_path = CONFIG_PATH
     def_cfg_path = os.path.join(my_path, def_cfg_rel_path)
     with open(def_cfg_path, 'r') as f:
         config = yaml.safe_load(f)

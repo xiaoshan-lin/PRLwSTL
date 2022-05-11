@@ -43,7 +43,7 @@ class Fmdp(lomap.Ts):
         flag_product = itertools.product(*flag_set)
         self.flag_set = sorted(itertools.product(*flag_set))
         self.states = list(itertools.product(mdp_states, flag_product))
-        node_attrs = [(s, self.mdp.g.node[s[0]]) for s in self.states]
+        node_attrs = [(s, self.mdp.g.nodes[s[0]]) for s in self.states]
         self.g.add_nodes_from(node_attrs)
 
     def build_transitions(self):
@@ -69,7 +69,7 @@ class Fmdp(lomap.Ts):
         # Remove states that do not have reverse neighbors
         # TODO: may be faster to selectivly create states instead
         g_rev = self.g.reverse()
-        for s in self.g.nodes():
+        for s in list(self.g.nodes()):
             if g_rev[s] == {}:
                 self.g.remove_node(s)
 
@@ -308,7 +308,7 @@ class FmdpStl:
                 raise Exception("Invalid predicate: " + pred)
 
 
-    def parse_and_or(self, phi):
+    def parse_and_or(self, phi: str) -> tuple[str]:
         """
         Returns a three tuple of two expressions seperated by an 'and' (&) or 'or' (|) 
         """
@@ -316,7 +316,7 @@ class FmdpStl:
         and_or_count = phi.count('&') + phi.count('|')
         # Check for simple expression
         if and_or_count == 1:
-            phi = phi.translate(None, '()') # remove unneeded parentheses
+            phi = phi.translate({ord(c): None for c in '()'}) # remove unneeded parentheses
             if '|' in phi:
                 parts = phi.split('|')
 

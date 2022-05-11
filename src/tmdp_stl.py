@@ -18,12 +18,12 @@ class Tmdp(lomap.Ts):
         self.tau = self.tmdp_stl.get_tau()
 
         #add state for null history that can transition to any state
-        for s in self.mdp.g.nodes() + [None]:
-            self.mdp.g.add_edge(None, s, new_weight=1, weight=1)
+        for s in list(self.mdp.g.nodes()) + ['None']:
+            self.mdp.g.add_edge('None', s, new_weight=1, weight=1)
 
         # make mdp init at that state for the sake of building
         real_mdp_init = self.mdp.init
-        self.mdp.init = {None:1}
+        self.mdp.init = {'None':1}
 
         self.build_states()
         self.build_transitions()
@@ -32,7 +32,7 @@ class Tmdp(lomap.Ts):
         self.mdp.init = real_mdp_init
 
         # When the pa is created, we want states with null history. Must start with all None.
-        self.temp_init_state = tuple([None] * self.tau)
+        self.temp_init_state = tuple(['None'] * self.tau)
         self.init = {self.temp_init_state: 1}
 
         # self.wrap_dict = {s:self.gen_wrap_states_by_mdp(s) for s in self.mdp.g.nodes()}
@@ -54,12 +54,12 @@ class Tmdp(lomap.Ts):
         return self.mdp
 
     def new_ep_state(self, tmdp_s):
-        new_s = [None] * (self.tau - 1) + [tmdp_s[-1]]
+        new_s = ['None'] * (self.tau - 1) + [tmdp_s[-1]]
         return tuple(new_s)
 
     def reset_init(self):
         self.g.remove_node(self.temp_init_state)
-        self.init = {((None,) * (self.tau-1)) + (list(self.mdp.init.keys())[0],) :1}
+        self.init = {(('None',) * (self.tau-1)) + (list(self.mdp.init.keys())[0],) :1}
 
     def get_state_to_remove(self):
         return self.temp_init_state
@@ -71,7 +71,7 @@ class Tmdp(lomap.Ts):
     def build_states(self):
         # O(n*a^(tau-1)) worst case
         # Make a dictionary of ts edges 
-        ts_edge_dict = {s:list(self.mdp.g.edge[s].keys()) for s in list(self.mdp.g.edge.keys())}
+        ts_edge_dict = {s:list(self.mdp.g.adj[s].keys()) for s in list(self.mdp.g.adj.keys())}
         # ts_edge_dict[None] = self.mdp.g.edge.keys() + [None]
 
         # make list of tau mdp states where each state is represented by a tuple of mdp states
@@ -83,7 +83,7 @@ class Tmdp(lomap.Ts):
         # states.remove((None,) * tau) # No state should end with a null
 
         # try and recreate process used in ts.read_from_file() except with tau mdp
-        self.init = {((None,) * (tau-1)) + (list(self.mdp.init.keys())[0],) :1}
+        self.init = {(('None',) * (tau-1)) + (list(self.mdp.init.keys())[0],) :1}
         self.states = states
         self.ts_edge_dict = ts_edge_dict
 
@@ -117,7 +117,7 @@ class Tmdp(lomap.Ts):
         tau = self.tmdp_stl.get_tau()
         edge_dict = {}
         for x1 in tqdm(self.states):
-            edge_attrs = self.mdp.g.edge[x1[-1]]
+            edge_attrs = self.mdp.g.adj[x1[-1]]
             # tmdp states are adjacent if they share the same (offset) history. "current" state transition is implied valid 
             # based on the set of names created
             if tau > 1:
@@ -131,7 +131,8 @@ class Tmdp(lomap.Ts):
 
         # add node attributes based on last state in sequence
         for n in self.g.nodes():
-            self.g.node[n] = self.mdp.g.node[n[-1]]
+            # self.g.nodes[n] = self.mdp.g.nodes[n[-1]]
+            nx.set_node_attributes(self.g, {n: self.mdp.g.nodes[n[-1]]})
 
     # def gen_wrap_states_by_mdp(self,mdp_s):
     #     #TODO what about pruned time product??
@@ -172,7 +173,7 @@ class Tmdp(lomap.Ts):
 
     def get_null_state(self, tmdp_s):
         mdp_s = self.get_mdp_state(tmdp_s)
-        null_tmdp_s = tuple([None] * (self.tau-1) + [mdp_s])
+        null_tmdp_s = tuple(['None'] * (self.tau-1) + [mdp_s])
         return null_tmdp_s
 
 
@@ -213,6 +214,8 @@ class TmdpStl:
         # if self.ts_sig_dict == None:
         #     raise Exception("State to signal mapping must be set with set_ts_sig_dict().")
 
+        if 'None' in tmdp_s:
+            raise RuntimeError('Error: Trying to calculate the reward for a state with incomplete history!!')
         sig = [self.ts_sig_dict[x] for x in tmdp_s]
         rdeg = self.parser.rdegree(sig)
         return rdeg

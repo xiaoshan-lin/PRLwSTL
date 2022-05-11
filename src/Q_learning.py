@@ -335,8 +335,9 @@ def test_policy(pi, pa, stl_expr, eps_unc, iters, mdp_type):
 
 
         mdp_traj = [pa.get_mdp_state(p) for p in init_traj]
-        for p in init_traj:
-            reward_sum += pa.reward(p)
+        reward_sum += pa.reward(z_init)
+        # for p in init_traj:
+        #     reward_sum += pa.reward(p)
 
 
         if log:
