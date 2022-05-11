@@ -34,6 +34,10 @@ Install git if you don't have it
 sudo apt install git -y
 ```
 
+Install graphviz to draw visual graph representations
+```bash
+sudo apt install graphviz libgraphviz-dev
+```
 
 <br />
 
@@ -56,6 +60,11 @@ python3.10 -m pip install virtualenv
 See if you have git. If you don't have it, you will get a pop-up prompting you to install it.
 ```zsh
 git --version
+```
+
+Install graphviz to draw visual graph representations
+```zsh
+[INSERT BREW COMMAND]
 ```
 
 <br />
@@ -82,7 +91,6 @@ git checkout py3
 
 Install virtualenv and create a Python virtual environment called `venv` in the `ConstrainedRL` directory
 ```bash
-#python3.10 -m pip install virtualenv
 python3.10 -m venv venv
 source venv/bin/activate
 pip install --upgrade pip
