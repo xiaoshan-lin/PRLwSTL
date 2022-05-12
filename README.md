@@ -36,7 +36,7 @@ sudo apt install git -y
 
 Install graphviz to draw visual graph representations
 ```bash
-sudo apt install graphviz libgraphviz-dev
+sudo apt install graphviz libgraphviz-dev -y
 ```
 
 <br />
