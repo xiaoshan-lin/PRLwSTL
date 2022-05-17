@@ -25,7 +25,7 @@ sudo apt update && sudo apt upgrade -y
 
 Install the latest Python 3.10
 ```bash
-sudo apt install python3.10 python3.10-venv python3.10-tk curl -y
+sudo apt install python3.10 libpython3.10-dev python3.10-venv python3.10-tk curl -y
 curl -sSL https://bootstrap.pypa.io/get-pip.py | python3.10
 ```
 
@@ -51,6 +51,7 @@ Install homebrew https://brew.sh/
 Install the latest Python 3.10
 ```zsh
 brew install python@3.10
+[INSERT BREW COMMAND TO INSTALL PYTHON HEADER FILES]
 # Create a symlink to a folder on your PATH
 ln -s /usr/local/opt/python@3.10/bin/python3 /usr/local/bin/python3.10
 python3.10 -m pip install --upgrade pip
