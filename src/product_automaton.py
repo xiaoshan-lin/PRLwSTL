@@ -10,7 +10,7 @@ from tqdm import tqdm
 
 class AugPa(lomap.Model):
 
-    def __init__(self, aug_mdp, dfa, time_bound):
+    def __init__(self, aug_mdp, dfa, time_bound, width, height):
         # aug_mdp is an augmented mdp such as a tau-mdp or flag-mdp
         # dfa is generated from a twtl constraint
         # time_bound is both the time bound of the twtl task, and the time horizon of the STL constraint
@@ -22,13 +22,17 @@ class AugPa(lomap.Model):
         self.time_bound = time_bound
         self.reward_cache = {}
         self.is_STL_objective = not (aug_mdp.name == 'Static Reward MDP')
-
+        self.width = width
+        self.height = height
+        
         # generate
         # Following has O(xda*2^|AP|) worst case. O(xd) for looping through all PA states * O(a * 2^|AP|) for adjacent MDP and DFA states
         product_model = synth.ts_times_fsa(aug_mdp, dfa)
         self.init = product_model.init
         self.g = product_model.g
         self.final = product_model.final
+        self.idx_to_action = {0:'stay',1:'E',-1:'W',-self.width:'N',self.width:'S',
+                              -self.width-1:'NW',-self.width+1:'NE',self.width-1:'SW',self.width+1:'SE'}
 
         # TODO: reset_init seems like a messy thing to do
         aug_mdp.reset_init()
@@ -130,16 +134,15 @@ class AugPa(lomap.Model):
         if self.energy_dict == None:
             raise Exception("Please call compute_energy before prune_actions")
 
-
         ep_len = self.time_bound
         # initialize actions of time product MDP
-        actions = [nx.convert.to_dict_of_lists(self.g) for _ in range(ep_len)]
-
+        pruned_states = [nx.convert.to_dict_of_lists(self.g) for _ in range(ep_len)]
+        pruned_actions = {t:{p:['N','NE','E','SE','S','SW','W','NW','stay'] for p in self.g.nodes()} for t in range(self.time_bound)}
         pi_eps_go = {t:{} for t in range(ep_len)}
 
         # create set of non-accepting states
         accepting_states = self.final
-        non_accepting_states = list(actions[0].keys())
+        non_accepting_states = list(pruned_states[0].keys())
         for s in accepting_states:
             non_accepting_states.remove(s)
         
@@ -148,7 +151,7 @@ class AugPa(lomap.Model):
                 pi_eps_go_state = None
                 d_eps_min = float('inf')
                 # Create copy to avoid removing from the same list being iterated
-                next_ps = actions[t][p][:]
+                next_ps = pruned_states[t][p][:]
                 for next_p in next_ps:
                     # Find all possible epsilon stochastic transitions resulting from this edge
                     low_prob_neighbors = self.get_low_prob_neighbors(p,next_p)
@@ -168,7 +171,8 @@ class AugPa(lomap.Model):
 
                     if imax < 0 or sat_prob < des_prob:
                         # prune this action
-                        actions[t][p].remove(next_p)
+                        pruned_states[t][p].remove(next_p)
+                        pruned_actions[t][p].remove(self.states_to_action(p,next_p))
 
                     # track minimum epsilon stocastic transition distance for the case that the action set ends empty
                     d_eps = self.energy_dict[next_p]
@@ -176,21 +180,29 @@ class AugPa(lomap.Model):
                         d_eps_min = d_eps
                         pi_eps_go_state = next_p
 
-                if actions[t][p] == []:
+                if pruned_states[t][p] == []:
                     # record state signifying action minimizing d-epsilon-min
                     # In this scenario with one state for each action with p > 1 - eps, 
                     #   a state-state edge can represent an action
-                    pi_eps_go[t][p] = pi_eps_go_state
+                    pruned_states[t][p] = pi_eps_go_state
+                    pruned_actions[t][p] = self.states_to_action(p,pi_eps_go_state)
+                    pi_eps_go[t][p] = pi_eps_go_state #TODO change to action
 
-        self.pruned_time_actions = actions
+        self.pruned_time_states = pruned_states
+        self.pruned_actions = pruned_actions
         self.pi_eps_go = pi_eps_go
 
+    def states_to_action(self, s1, s2):
+        idx1 = int(s1[0][1:])
+        idx2 = int(s2[0][1:])
+        action = self.idx_to_action[idx2-idx1]
+        return action       
 
-    def take_action(self, s1, s2, uncertainty):
+    def take_action_old(self, s1, s2, uncertainty):
         # Action is being defined as a state-state transition. 
         #   Possibly use discrete actions in the future in the case that multiple states can
         #   result from a single action with significant probability.
-
+        
         if np.random.uniform() > uncertainty:
             return s2
         else:
@@ -203,6 +215,9 @@ class AugPa(lomap.Model):
             # Choose from low probability states
             s2_new = random.choice(low_prob_states)
             return s2_new
+
+    def take_action(self, s, a, uncertainty):
+        return s
 
     def get_low_prob_neighbors(self, s1, s2):
         # TODO: put some of this in an mdp class
@@ -350,10 +365,10 @@ class AugPa(lomap.Model):
                 hist.append(pa_s)
 
             try:
-                neighbors = self.pruned_time_actions[t][pa_s]
+                neighbors = self.pruned_time_states[t][pa_s]
             except KeyError:
                 pa_s = (pa_s[0], list(self.dfa.init.keys())[0] + 1)
-                neighbors = self.pruned_time_actions[t][pa_s]
+                neighbors = self.pruned_time_states[t][pa_s]
 
             # for eg static rewards
             if tau == 1:
@@ -413,4 +428,5 @@ class AugPa(lomap.Model):
         selection_idx = np.random.choice(len(new_ep_trajs))
         selection = new_ep_trajs[selection_idx]
         return selection
+
                 

@@ -71,23 +71,23 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
     # initialize Q table
     init_val = 0
     time_steps = pa.get_hrz()
-    qtable = {i:{} for i in range(t_init, time_steps)}
-    for i in qtable:
-        qtable[i] = {p:{} for p in pa.get_states()}
-        for p in qtable[i]:
-            qtable[i][p] = {q:init_val + np.random.normal(0,0.0001) for q in pa.g.neighbors(p)}
-
+    qtable = {t:{} for t in range(t_init, time_steps)}
+    for t in qtable:
+        qtable[t] = {p:{} for p in pa.get_states()}
+        for p in qtable[t]:
+            qtable[t][p] = {a:init_val + np.random.normal(0,0.0001) for a in pa.pruned_actions[t][p]}
+     
     # initialize optimal policy pi on pruned time product automaton
     pi = {t:{} for t in qtable}
     for t in pi:
-        for p in pa.pruned_time_actions[t]:
-            if pa.pruned_time_actions[t][p] != []:
+        for p in pa.pruned_time_states[t]:
+            if pa.pruned_time_states[t][p] != []:
                 # initialize with a neighbor in the pruned space
-                pi[t][p] = max(pa.pruned_time_actions[t][p], key=qtable[t][p].get)
+                pi[t][p] = max(pa.pruned_actions[t][p], key=qtable[t][p].get)
             else:
                 # Empty action set. No actions available in the pruned time pa.
                 pi[t][p] = None
-
+  
     # Make an entry in q table for learning initial states and initialize pi
     if pa.is_STL_objective:
         qtable[0] = {p:{} for p in pa.get_null_states()}
@@ -106,30 +106,24 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
     # Loop for number of training episodes
     for ep in range(episodes):
         for t in range(t_init, time_steps):
-
-            next_states = pa.pruned_time_actions[t][z]
-            if next_states == []:
-                # Pruned action set is empty, choose action with lowest energy
-                probable_z = pa.pi_eps_go[t][z]
-                action_chosen_by = "pi epsilon go"
-            else:
-                if np.random.uniform() < epsilon:   # Explore
-                    probable_z = random.choice(next_states)
-                    action_chosen_by = "explore"
-                else:                               # Exploit
-                    probable_z = pi[t][z]
-                    action_chosen_by = "exploit"
+            pruned_actions = pa.pruned_actions[t][z]
+            if np.random.uniform() < epsilon:   # Explore
+                action_chosen = random.choice(pruned_actions)
+                action_chosen_by = "explore"
+            else:                               # Exploit
+                action_chosen = pi[t][z]
+                action_chosen_by = "exploit"
             
             # Take the action, result may depend on uncertainty
-            next_z = pa.take_action(z, probable_z, eps_unc)
-            if next_z == probable_z:
+            next_z = pa.take_action(z, action_chosen, eps_unc)
+            if next_z == action_chosen:
                 action_result = 'intended'
             else:
                 action_result = 'unintended'
 
             reward = pa.reward(next_z)
-            # TODO: shouldn't this update based on probable_z as that was the "action"?
-            cur_q = qtable[t][z][next_z]
+            # TODO: shouldn't this update based on action_chosen as that was the "action"?
+            cur_q = qtable[t][z][action_chosen]
             if t+1 == time_steps:
                 max_future_q = 0
             else:
@@ -138,11 +132,10 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
 
             # Update q value
             new_q = (1 - learn_rate) * cur_q + learn_rate * (reward + discount * max_future_q)
-            qtable[t][z][next_z] = new_q
+            qtable[t][z][action_chosen] = new_q
 
             # Update optimal policy
-            if next_states != []:
-                pi[t][z] = max(next_states, key=qtable[t][z].get)
+            pi[t][z] = max(pruned_actions, key=qtable[t][z].get)
 
             # track sum of rewards
             ep_rew_sum += reward

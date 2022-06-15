@@ -132,7 +132,8 @@ def build_environment(env_cfg, twtl_cfg, mdp_type, reward_cfg):
     else:
         raise ValueError("invalid AUG_MDP_TYPE")
     aug_mdp_timecost = timeit.default_timer() - aug_mdp_timer
-
+    print(ts)
+    print(123)
     mdp_horizon = aug_mdp.get_hrz()
 
     if mdp_horizon != dfa_horizon:
@@ -148,7 +149,7 @@ def build_environment(env_cfg, twtl_cfg, mdp_type, reward_cfg):
     # Augmented Product MDP Creation
     # =================================
     pa_start_time = timeit.default_timer()
-    pa_or = AugPa(aug_mdp, dfa, dfa_horizon)
+    pa_or = AugPa(aug_mdp, dfa, dfa_horizon, n, m)
     pa = copy.deepcopy(pa_or)	      # copy the pa
     pa_timecost =  timeit.default_timer() - pa_start_time
 
