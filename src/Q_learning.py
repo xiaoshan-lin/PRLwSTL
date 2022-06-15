@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import random
+from tqdm import tqdm
 
 from STL import STL
 
@@ -80,8 +81,8 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
     # initialize optimal policy pi on pruned time product automaton
     pi = {t:{} for t in qtable}
     for t in pi:
-        for p in pa.pruned_time_states[t]:
-            if pa.pruned_time_states[t][p] != []:
+        for p in pa.pruned_states[t]:
+            if pa.pruned_states[t][p] != []:
                 # initialize with a neighbor in the pruned space
                 pi[t][p] = max(pa.pruned_actions[t][p], key=qtable[t][p].get)
             else:
@@ -104,16 +105,23 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
     # z = pa.init.keys()[0]
 
     # Loop for number of training episodes
-    for ep in range(episodes):
+    for ep in tqdm(range(episodes)):
         for t in range(t_init, time_steps):
             pruned_actions = pa.pruned_actions[t][z]
+            pruned_states = pa.pruned_states[t][z]
+            #print(pruned_actions)
+            #print(pruned_states)
             if np.random.uniform() < epsilon:   # Explore
                 action_chosen = random.choice(pruned_actions)
                 action_chosen_by = "explore"
             else:                               # Exploit
                 action_chosen = pi[t][z]
                 action_chosen_by = "exploit"
-            
+            #cur_idx = int(z[0][1:])
+            #next_idx = cur_idx + pa.action_to_idx[action_chosen]
+            #next_state = [i for i in pruned_states if int(i[0][1:])==next_idx][0]
+            #print(z,action_chosen,next_state)
+            #print('---')
             # Take the action, result may depend on uncertainty
             next_z = pa.take_action(z, action_chosen, eps_unc)
             if next_z == action_chosen:
