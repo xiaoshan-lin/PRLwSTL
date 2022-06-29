@@ -132,8 +132,6 @@ def build_environment(env_cfg, twtl_cfg, mdp_type, reward_cfg):
     else:
         raise ValueError("invalid AUG_MDP_TYPE")
     aug_mdp_timecost = timeit.default_timer() - aug_mdp_timer
-    print(ts)
-    print(123)
     mdp_horizon = aug_mdp.get_hrz()
 
     if mdp_horizon != dfa_horizon:

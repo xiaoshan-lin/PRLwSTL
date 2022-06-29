@@ -81,13 +81,8 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
     # initialize optimal policy pi on pruned time product automaton
     pi = {t:{} for t in qtable}
     for t in pi:
-        for p in pa.pruned_states[t]:
-            if pa.pruned_states[t][p] != []:
-                # initialize with a neighbor in the pruned space
-                pi[t][p] = max(pa.pruned_actions[t][p], key=qtable[t][p].get)
-            else:
-                # Empty action set. No actions available in the pruned time pa.
-                pi[t][p] = None
+        for p in pa.pruned_actions[t]:
+            pi[t][p] = max(pa.pruned_actions[t][p], key=qtable[t][p].get)
   
     # Make an entry in q table for learning initial states and initialize pi
     if pa.is_STL_objective:
@@ -107,10 +102,8 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
     # Loop for number of training episodes
     for ep in tqdm(range(episodes)):
         for t in range(t_init, time_steps):
+            #print(z)
             pruned_actions = pa.pruned_actions[t][z]
-            pruned_states = pa.pruned_states[t][z]
-            #print(pruned_actions)
-            #print(pruned_states)
             if np.random.uniform() < epsilon:   # Explore
                 action_chosen = random.choice(pruned_actions)
                 action_chosen_by = "explore"
@@ -294,11 +287,7 @@ def test_policy(pi, pa, stl_expr, eps_unc, iters, mdp_type):
     for _ in range(iters):
         for t in range(t_init, time_steps):
             intended_z = pi[t][z]
-            if intended_z == None:
-                intended_z = pa.pi_eps_go[t][z]
-                action_chosen_by = "pi epsilon go"
-            else:
-                action_chosen_by = 'exploit'
+            action_chosen_by = 'exploit'
 
             # take action
             next_z = pa.take_action(z, intended_z, eps_unc)

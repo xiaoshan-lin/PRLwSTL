@@ -140,7 +140,6 @@ class AugPa(lomap.Model):
         # initialize actions of time product MDP
         pruned_states = [nx.convert.to_dict_of_lists(self.g) for _ in range(ep_len)]
         pruned_actions = {t:{p:[] for p in self.g.nodes()} for t in range(ep_len)}
-        pi_eps_go = {t:{} for t in range(ep_len)}
 
         # create set of non-accepting states
         accepting_states = self.final
@@ -152,7 +151,7 @@ class AugPa(lomap.Model):
         
         for p in tqdm(non_accepting_states):
             for t in range(ep_len):
-                pi_eps_go_state = None
+                pi_eps_go_states = []
                 d_eps_min = float('inf')
                 # Create copy to avoid removing from the same list being iterated
                 next_ps = pruned_states[t][p][:]
@@ -181,22 +180,24 @@ class AugPa(lomap.Model):
                     d_eps = self.energy_dict[next_p]
                     if d_eps < d_eps_min:
                         d_eps_min = d_eps
-                        pi_eps_go_state = next_p
+                        pi_eps_go_states = [next_p]
+                    elif d_eps == d_eps_min:
+                        pi_eps_go_states.append(next_p)
+                        
 
                 if pruned_states[t][p] == []:
                     # record state signifying action minimizing d-epsilon-min
                     # In this scenario with one state for each action with p > 1 - eps, 
                     #   a state-state edge can represent an action
-                    pruned_states[t][p] = [pi_eps_go_state]
-                    pi_eps_go[t][p] = pi_eps_go_state #TODO change to action
+                    pruned_states[t][p] = pi_eps_go_states
                 
                 pruned_actions[t][p] = [self.states_to_action(p,q) for q in pruned_states[t][p]]
 
         self.pruned_states = pruned_states
         self.pruned_actions = pruned_actions
-        self.pi_eps_go = pi_eps_go
 
     def states_to_action(self, s1, s2):
+        print(s1[0][1:])
         idx1 = int(s1[0][1:])
         idx2 = int(s2[0][1:])
         action = self.idx_to_action[idx2-idx1]
