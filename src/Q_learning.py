@@ -91,16 +91,18 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
         for p in qtable[0]:
             qtable[0][p] = {q:init_val + np.random.normal(0,0.0001) for q in pa.get_new_ep_states(p)}
             pi[0][p] = max(qtable[0][p], key=qtable[0][p].get)
-
+    print(qtable)
     if log:
         trajectory_reward_log.extend(init_traj)
         init_mdp_traj = [pa.get_mdp_state(z) for z in init_traj]
         for x in init_mdp_traj:
             mdp_traj_log += '{:<4}'.format(x)
     # z = pa.init.keys()[0]
-
+    
     # Loop for number of training episodes
     for ep in tqdm(range(episodes)):
+        #print('---')
+        #print(z)
         for t in range(t_init, time_steps):
             #print(z)
             pruned_actions = pa.pruned_actions[t][z]
@@ -123,6 +125,7 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
                 action_result = 'unintended'
 
             reward = pa.reward(next_z)
+            #print(reward)
             # TODO: shouldn't this update based on action_chosen as that was the "action"?
             cur_q = qtable[t][z][action_chosen]
             if t+1 == time_steps:
@@ -168,7 +171,6 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
             else:                               # Exploit
                 init_z = pi[0][z]
                 action_chosen_by = "exploit"
-
             init_traj = pa.get_new_ep_trajectory(z, init_z)
 
             # Update qtable and optimal policy
@@ -179,6 +181,7 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
             new_q = (1 - learn_rate) * cur_q + learn_rate * (reward + discount * max_future_q)
             qtable[0][z][init_z] = new_q
             pi[0][z] = max(qtable[0][z], key=qtable[0][z].get)
+            print(qtable.keys())
 
         else:
             # static rewards: Randomly choose adjacent state for beginning of next ep
@@ -213,7 +216,8 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
     # plt.ylabel('Sum of rewards')
     # plt.show()
 
-
+    print(pi)
+    print(qtable)
     return pi
 
 
@@ -285,12 +289,15 @@ def test_policy(pi, pa, stl_expr, eps_unc, iters, mdp_type):
     reward_sum = 0
 
     for _ in range(iters):
+        #print('---')
         for t in range(t_init, time_steps):
+            
             intended_z = pi[t][z]
             action_chosen_by = 'exploit'
 
             # take action
             next_z = pa.take_action(z, intended_z, eps_unc)
+            #print([z,next_z])
             action_result = 'intended' if next_z == intended_z else 'unintended'
 
             if log:
@@ -322,7 +329,7 @@ def test_policy(pi, pa, stl_expr, eps_unc, iters, mdp_type):
             z_init = pa.get_null_state(z_init)
             init_traj = [z_init]
         z = z_init
-
+        
 
         mdp_traj = [pa.get_mdp_state(p) for p in init_traj]
         reward_sum += pa.reward(z_init)

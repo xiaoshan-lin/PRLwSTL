@@ -147,7 +147,7 @@ def build_environment(env_cfg, twtl_cfg, mdp_type, reward_cfg):
     # Augmented Product MDP Creation
     # =================================
     pa_start_time = timeit.default_timer()
-    pa_or = AugPa(aug_mdp, dfa, dfa_horizon, n, m)
+    pa_or = AugPa(aug_mdp, mdp_type, dfa, dfa_horizon, n, m)
     pa = copy.deepcopy(pa_or)	      # copy the pa
     pa_timecost =  timeit.default_timer() - pa_start_time
 

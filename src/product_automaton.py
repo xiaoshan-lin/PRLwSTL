@@ -10,7 +10,7 @@ from tqdm import tqdm
 
 class AugPa(lomap.Model):
 
-    def __init__(self, aug_mdp, dfa, time_bound, width, height):
+    def __init__(self, aug_mdp, mdp_type, dfa, time_bound, width, height):
         # aug_mdp is an augmented mdp such as a tau-mdp or flag-mdp
         # dfa is generated from a twtl constraint
         # time_bound is both the time bound of the twtl task, and the time horizon of the STL constraint
@@ -18,12 +18,16 @@ class AugPa(lomap.Model):
         lomap.Model.__init__(self, directed=True, multi=False)
 
         self.aug_mdp = aug_mdp
+        mdp_type_dict = {'static rewards':0,'tau-MDP':1,'flag-MDP':2} 
+        self.mdp_type = mdp_type_dict[mdp_type]
         self.dfa = dfa
         self.time_bound = time_bound
         self.reward_cache = {}
         self.is_STL_objective = not (aug_mdp.name == 'Static Reward MDP')
         self.width = width
         self.height = height
+        self.tau = self.aug_mdp.get_tau()
+        #self.aug_mdp.visualize()
         
         # generate
         # Following has O(xda*2^|AP|) worst case. O(xd) for looping through all PA states * O(a * 2^|AP|) for adjacent MDP and DFA states
@@ -126,6 +130,14 @@ class AugPa(lomap.Model):
     def get_energy(self, pa_state):
         return self.energy_dict[pa_state]
 
+    def plot_graph(self, graph):
+        pygraphviz_g = nx.nx_agraph.to_agraph(graph)
+        pygraphviz_g.layout('dot', args='-Nfontsize=30 -Nwidth="3" -Nheight="1" -Nmargin=0 -Gfontsize=15')
+        pygraphviz_g.draw('example.png', format='png')
+        img = plt.imread('example.png')
+        plt.imshow(img)
+        plt.show()
+
     def prune_actions(self, eps_uncertainty, des_prob):
         # Time complexity is O(txa^2) 
         # Loop through all time product states, all neighbors, all low probability transitions.
@@ -196,10 +208,17 @@ class AugPa(lomap.Model):
         self.pruned_states = pruned_states
         self.pruned_actions = pruned_actions
 
-    def states_to_action(self, s1, s2):
-        print(s1[0][1:])
-        idx1 = int(s1[0][1:])
-        idx2 = int(s2[0][1:])
+    def states_to_action(self, s1, s2): 
+        match self.mdp_type:
+            case 0:
+                idx1 = int(s1[0][1:])
+                idx2 = int(s2[0][1:])
+            case 1:
+                idx1 = int(s2[0][self.tau-2][1:])
+                idx2 = int(s2[0][self.tau-1][1:])
+            case 2:
+                idx1 = int(s1[0][0][1:])
+                idx2 = int(s2[0][0][1:])
         action = self.idx_to_action[idx2-idx1]
         return action       
 
@@ -210,13 +229,28 @@ class AugPa(lomap.Model):
         
         # for verifying next_state
         # next_state = [i for i in self.pruned_states[t][s] if int(i[0][1:])==next_idx][0]
+        match self.mdp_type:
+            case 0:
+                cur_idx = int(s[0][1:])
+                next_idx = cur_idx + self.action_to_idx[a]
+                next_aug_mdp_s = 'r{}'.format(next_idx)
+            case 1:
+                cur_idx = int(s[0][self.tau-1][1:])
+                next_idx = cur_idx + self.action_to_idx[a]
+                next_mdp_s = 'r{}'.format(next_idx)
+                next_aug_mdp_s = s[1:]+(next_mdp_s,)
+            case 2:
+                cur_idx = int(s[0][0][1:])
+                next_idx = cur_idx + self.action_to_idx[a]
+                next_mdp_s = 'r{}'.format(next_idx)
+                flags = s[0][1]
+                next_flags = self.aug_mdp.fmdp_stl.flag_update(flags, next_mdp_s)
+                next_aug_mdp_s = (next_mdp_s,next_flags)
 
-        cur_idx = int(s[0][1:])
-        next_idx = cur_idx + self.action_to_idx[a]
-        ts_next_state = 'r{}'.format(next_idx)
-        ts_prop = self.aug_mdp.g.nodes[ts_next_state].get('prop',set())
+        
+        ts_prop = self.aug_mdp.g.nodes[next_aug_mdp_s].get('prop',set())
         fsa_next_state = self.dfa.next_states_of_fsa(s[1], ts_prop)[0]
-        next_s = (ts_next_state, fsa_next_state)
+        next_s = (next_aug_mdp_s, fsa_next_state)
 
         if np.random.uniform() > uncertainty:
             return next_s
