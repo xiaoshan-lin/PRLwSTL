@@ -157,6 +157,8 @@ class Tmdp(lomap.Ts):
 
 
     def reward(self, tmdp_s, beta):
+        if 'None' in tmdp_s:
+            return 0
         temporal_op = self.tmdp_stl.get_outer_temporal_op()
         if temporal_op == 'F':
             r = np.exp(beta * self.tmdp_stl.rdegree_rew(tmdp_s))

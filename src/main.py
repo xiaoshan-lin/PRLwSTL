@@ -15,7 +15,7 @@ from dfa import create_dfa, save_dfa
 from static_reward_mdp import StaticRewardMdp
 import Q_learning as ql
 
-CONFIG_PATH = '../configs/default_static.yaml'
+CONFIG_PATH = '../configs/default_ECC.yaml'
 
 NORMAL_COLOR = '\033[0m'
 

@@ -28,7 +28,7 @@ class AugPa(lomap.Model):
         self.height = height
         self.tau = self.aug_mdp.get_tau()
         #print(aug_mdp.g.nodes())
-        self.plot_graph(aug_mdp.g)
+        #self.plot_graph(aug_mdp.g)
         #self.aug_---mdp.visualize()
         
         # generate
@@ -256,7 +256,7 @@ class AugPa(lomap.Model):
                 cur_idx = int(s[0][self.tau-1][1:])
                 next_idx = cur_idx + self.action_to_idx[a]
                 next_mdp_s = 'r{}'.format(next_idx)
-                next_aug_mdp_s = s[1:]+(next_mdp_s,)
+                next_aug_mdp_s = s[0][1:]+(next_mdp_s,)
             case 'flag-MDP':
                 cur_idx = int(s[0][0][1:])
                 next_idx = cur_idx + self.action_to_idx[a]
@@ -265,7 +265,6 @@ class AugPa(lomap.Model):
                 next_flags = self.aug_mdp.fmdp_stl.flag_update(flags, next_mdp_s)
                 next_aug_mdp_s = (next_mdp_s,next_flags)
 
-        
         ts_prop = self.aug_mdp.g.nodes[next_aug_mdp_s].get('prop',set())
         fsa_next_state = self.dfa.next_states_of_fsa(s[1], ts_prop)[0]
         next_s = (next_aug_mdp_s, fsa_next_state)
@@ -352,14 +351,14 @@ class AugPa(lomap.Model):
         tau = self.aug_mdp.get_init_tau()
         init_traj = [z]
 
-        for _ in range(1,tau):
+        '''for _ in range(1,tau):
             mdp_s = self.get_mdp_state(z)
             neighbors = self.g.neighbors(z)
             # choose next z with same mdp state
             z = next(iter([next_z for next_z in neighbors if self.get_mdp_state(next_z) == mdp_s]))
-            init_traj.append(z)
+            init_traj.append(z)'''
         
-        t_init = tau-1
+        t_init = 0
         return z, t_init, init_traj
 
     def reward(self, pa_s, beta = 2):
@@ -415,8 +414,6 @@ class AugPa(lomap.Model):
         # Nothing to do for non STL objective
         if not self.is_STL_objective:
             return
-      
-        
 
         if self.mdp_type == 'flag-MDP':
             new_ep_dict = {p:{} for p in self.get_null_states()}

@@ -10,7 +10,7 @@
 # This option sets the MDP type. The options are "flag-MDP", "tau-MDP", and "static rewards".
 # flag-MDP and tau-MDP use rewards calculated from the satisfaction of an STL specification defined later in this file,
 # and static rewards uses rewards assigned per state also defined later in this file.
-MDP type: flag-MDP
+MDP type: tau-MDP
 # MDP type: static rewards
 # MDP type: flag-MDP
 # MDP type: tau-MDP

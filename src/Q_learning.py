@@ -86,17 +86,16 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
             pi[t][p] = max(pa.pruned_actions[t][p], key=qtable[t][p].get)
     
     # Make an entry in q table for learning initial states and initialize pi
-    if pa.is_STL_objective:
+    '''if pa.is_STL_objective:
         qtable[0] = {p:{} for p in pa.get_null_states()}
         pi[0] = {}
         for p in qtable[0]:
             qtable[0][p] = {pa.states_to_action(p,q):init_val + np.random.normal(0,0.0001) for q in pa.get_new_ep_states(p)}
-            print('---')
-            print(p)
-            print(pa.get_new_ep_states(p))
-            
-            pi[0][p] = max(qtable[0][p], key=qtable[0][p].get)
-    print(qtable[0])
+            #print('---')
+            #print(p)
+            #print(pa.get_new_ep_states(p))           
+            pi[0][p] = max(qtable[0][p], key=qtable[0][p].get)'''
+    #print(qtable[0])
     if log:
         trajectory_reward_log.extend(init_traj)
         init_mdp_traj = [pa.get_mdp_state(z) for z in init_traj]
@@ -104,7 +103,7 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
             mdp_traj_log += '{:<4}'.format(x)
     # z = pa.init.keys()[0]
     # Loop for number of training episodes
-    print(t_init, time_steps)
+    #print(t_init, time_steps)
     for ep in tqdm(range(episodes)):
         #print('---')
         #time.sleep(0.5)
@@ -118,6 +117,7 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
             else:                               # Exploit
                 action_chosen = pi[t][z]
                 action_chosen_by = "exploit"
+            #print(action_chosen_by)
             #cur_idx = int(z[0][1:])
             #next_idx = cur_idx + pa.action_to_idx[action_chosen]
             #next_state = [i for i in pruned_states if int(i[0][1:])==next_idx][0]
@@ -167,8 +167,9 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
         ep_rew_sum = 0
 
         z = pa.get_null_state(z)
+        init_traj = []
 
-        if pa.is_STL_objective:
+        '''if pa.is_STL_objective:
             #FIXME: pi[0][z] could be None
             # Choose init state either randomly or by pi
             if np.random.uniform() < epsilon:   # Explore
@@ -199,7 +200,7 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
             # Don't want any progress toward TWTL satisfaction on this transition
             init_z = pa.get_null_state(init_z)
 
-        z = init_z
+        z = init_z'''
 
         if log:
             with open(tr_log_file, 'a') as log_file:
@@ -320,7 +321,15 @@ def test_policy(pi, pa, stl_expr, eps_unc, iters, mdp_type):
             twtl_pass_count += 1
 
         z_null = pa.get_null_state(z)
-        print(pa.g.neighbors(z))
+        z = z_null
+        init_traj = [z]
+        if pa.is_STL_objective:
+            mdp_sig = [pa.aug_mdp.sig_dict[x] for x in mdp_traj]
+            rdeg = parser.rdegree(mdp_sig)
+            if rdeg > 0:
+                stl_sat_count += 1
+            stl_rdeg_sum += rdeg
+        '''
         rdeg = 0
         if pa.is_STL_objective:
             z_init = pi[0][z_null]
@@ -336,11 +345,11 @@ def test_policy(pi, pa, stl_expr, eps_unc, iters, mdp_type):
             z_init = random.choice(init_states)
             z_init = pa.get_null_state(z_init)
             init_traj = [z_init]
-        z = z_init
+        z = z_init'''
         
 
         mdp_traj = [pa.get_mdp_state(p) for p in init_traj]
-        reward_sum += pa.reward(z_init)
+        reward_sum += pa.reward(z)
         # for p in init_traj:
         #     reward_sum += pa.reward(p)
 
