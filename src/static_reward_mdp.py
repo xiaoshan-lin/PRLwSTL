@@ -29,6 +29,9 @@ class StaticRewardMdp(lomap.Ts):
     def get_tau(self):
         return 1
 
+    def get_init_tau(self):
+        return 1
+
     def reset_init(self):
         pass
 

@@ -7,19 +7,19 @@ import math
 import numpy as np
 import random
 from tqdm import tqdm
+import matplotlib.pyplot as plt
 
 class AugPa(lomap.Model):
 
     def __init__(self, aug_mdp, mdp_type, dfa, time_bound, width, height):
         # aug_mdp is an augmented mdp such as a tau-mdp or flag-mdp
         # dfa is generated from a twtl constraint
-        # time_bound is both the time bound of the twtl task, and the time horizon of the STL constraint
+        # time_bound is both the time bound of the twtl task,W and the time horizon of the STL constraint
 
         lomap.Model.__init__(self, directed=True, multi=False)
 
         self.aug_mdp = aug_mdp
-        mdp_type_dict = {'static rewards':0,'tau-MDP':1,'flag-MDP':2} 
-        self.mdp_type = mdp_type_dict[mdp_type]
+        self.mdp_type = mdp_type
         self.dfa = dfa
         self.time_bound = time_bound
         self.reward_cache = {}
@@ -27,7 +27,9 @@ class AugPa(lomap.Model):
         self.width = width
         self.height = height
         self.tau = self.aug_mdp.get_tau()
-        #self.aug_mdp.visualize()
+        #print(aug_mdp.g.nodes())
+        self.plot_graph(aug_mdp.g)
+        #self.aug_---mdp.visualize()
         
         # generate
         # Following has O(xda*2^|AP|) worst case. O(xd) for looping through all PA states * O(a * 2^|AP|) for adjacent MDP and DFA states
@@ -39,6 +41,12 @@ class AugPa(lomap.Model):
                               -self.width-1:'NW',-self.width+1:'NE',self.width-1:'SW',self.width+1:'SE'}
         self.action_to_idx = {'stay':0,'E':1,'W':-1,'N':-self.width,'S':self.width,
                               'NW':-self.width-1,'NE':-self.width+1,'SW':self.width-1,'SE':self.width+1}
+        if self.width < 3 and self.height < 3:
+            self.correct_action_flag = True
+            self.corrected_action_left = {'SW':'E','W':'NE'}
+            self.corrected_action_right = {'E':'SW','NE':'W',}
+        else:
+            self.correct_action_flag = False
 
         # TODO: reset_init seems like a messy thing to do
         aug_mdp.reset_init()
@@ -196,30 +204,40 @@ class AugPa(lomap.Model):
                     elif d_eps == d_eps_min:
                         pi_eps_go_states.append(next_p)
                         
-
+                #print([t,p])
+                #print(pruned_states[t][p])
                 if pruned_states[t][p] == []:
                     # record state signifying action minimizing d-epsilon-min
                     # In this scenario with one state for each action with p > 1 - eps, 
                     #   a state-state edge can represent an action
                     pruned_states[t][p] = pi_eps_go_states
+                    #print(pi_eps_go_states)
                 
                 pruned_actions[t][p] = [self.states_to_action(p,q) for q in pruned_states[t][p]]
-
+                #print(pruned_actions[t][p]) 
+                #print('---')
+        #print(pruned_states)
         self.pruned_states = pruned_states
         self.pruned_actions = pruned_actions
 
     def states_to_action(self, s1, s2): 
         match self.mdp_type:
-            case 0:
+            case 'static rewards':
                 idx1 = int(s1[0][1:])
                 idx2 = int(s2[0][1:])
-            case 1:
+            case 'tau-MDP':
                 idx1 = int(s2[0][self.tau-2][1:])
                 idx2 = int(s2[0][self.tau-1][1:])
-            case 2:
+            case 'flag-MDP':
                 idx1 = int(s1[0][0][1:])
                 idx2 = int(s2[0][0][1:])
         action = self.idx_to_action[idx2-idx1]
+        if self.correct_action_flag:
+            if action in self.corrected_action_left and idx1==0:
+                action = self.corrected_action_left[action]
+            elif action in self.corrected_action_right and idx1==1:
+                action = self.corrected_action_right[action]
+            
         return action       
 
     def take_action(self, s, a, uncertainty):
@@ -230,16 +248,16 @@ class AugPa(lomap.Model):
         # for verifying next_state
         # next_state = [i for i in self.pruned_states[t][s] if int(i[0][1:])==next_idx][0]
         match self.mdp_type:
-            case 0:
+            case 'static rewards':
                 cur_idx = int(s[0][1:])
                 next_idx = cur_idx + self.action_to_idx[a]
                 next_aug_mdp_s = 'r{}'.format(next_idx)
-            case 1:
+            case 'tau-MDP':
                 cur_idx = int(s[0][self.tau-1][1:])
                 next_idx = cur_idx + self.action_to_idx[a]
                 next_mdp_s = 'r{}'.format(next_idx)
                 next_aug_mdp_s = s[1:]+(next_mdp_s,)
-            case 2:
+            case 'flag-MDP':
                 cur_idx = int(s[0][0][1:])
                 next_idx = cur_idx + self.action_to_idx[a]
                 next_mdp_s = 'r{}'.format(next_idx)
@@ -331,7 +349,7 @@ class AugPa(lomap.Model):
             z = init_pa_state
             if z not in self.get_states():
                 raise Exception("invalid pa state: {}".format(z))
-        tau = self.aug_mdp.get_tau()
+        tau = self.aug_mdp.get_init_tau()
         init_traj = [z]
 
         for _ in range(1,tau):
@@ -397,9 +415,16 @@ class AugPa(lomap.Model):
         # Nothing to do for non STL objective
         if not self.is_STL_objective:
             return
+      
+        
 
+        if self.mdp_type == 'flag-MDP':
+            new_ep_dict = {p:{} for p in self.get_null_states()}
+            for p in new_ep_dict:
+                # choose init state of new episode from the neighbor of the last state
+                new_ep_dict[p] = {q:[] for q in self.get_null_states() if q[0][0] in self.aug_mdp.mdp.g.neighbors(p[0][0])}
+            
         new_ep_dict = {}
-
         def new_ep_states_recurse(pa_s, tau, t = 0, temp_dict = None, hist = None):
 
             # Assumes that pa_s is the state chosen at t = 0 TODO: is this still correct?

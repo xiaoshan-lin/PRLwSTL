@@ -93,6 +93,9 @@ class Fmdp(lomap.Ts):
         # In the case of fmdp, this is max(tau_i)
         return int(max(self.fmdp_stl.get_tau()))
 
+    def get_init_tau(self):
+        return 1
+
     def reset_init(self):
         pass
 

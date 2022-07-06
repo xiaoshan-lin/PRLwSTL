@@ -44,6 +44,9 @@ class Tmdp(lomap.Ts):
     def get_tau(self):
         return self.tau
 
+    def get_init_tau(self):
+        return self.tau
+
     def get_mdp_state(self, tmdp_s):
         if type(tmdp_s) != tuple or len(tmdp_s) != self.tau:
             raise Exception('invalid tau mdp state: {}'.format(tmdp_s))

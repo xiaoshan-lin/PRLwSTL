@@ -2,6 +2,7 @@ import os
 import numpy as np
 import random
 from tqdm import tqdm
+import time
 
 from STL import STL
 
@@ -77,32 +78,37 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
         qtable[t] = {p:{} for p in pa.get_states()}
         for p in qtable[t]:
             qtable[t][p] = {a:init_val + np.random.normal(0,0.0001) for a in pa.pruned_actions[t][p]}
-     
+    #print(qtable[0])
     # initialize optimal policy pi on pruned time product automaton
     pi = {t:{} for t in qtable}
     for t in pi:
         for p in pa.pruned_actions[t]:
             pi[t][p] = max(pa.pruned_actions[t][p], key=qtable[t][p].get)
-  
+    
     # Make an entry in q table for learning initial states and initialize pi
     if pa.is_STL_objective:
         qtable[0] = {p:{} for p in pa.get_null_states()}
         pi[0] = {}
         for p in qtable[0]:
-            qtable[0][p] = {q:init_val + np.random.normal(0,0.0001) for q in pa.get_new_ep_states(p)}
+            qtable[0][p] = {pa.states_to_action(p,q):init_val + np.random.normal(0,0.0001) for q in pa.get_new_ep_states(p)}
+            print('---')
+            print(p)
+            print(pa.get_new_ep_states(p))
+            
             pi[0][p] = max(qtable[0][p], key=qtable[0][p].get)
-    print(qtable)
+    print(qtable[0])
     if log:
         trajectory_reward_log.extend(init_traj)
         init_mdp_traj = [pa.get_mdp_state(z) for z in init_traj]
         for x in init_mdp_traj:
             mdp_traj_log += '{:<4}'.format(x)
     # z = pa.init.keys()[0]
-    
     # Loop for number of training episodes
+    print(t_init, time_steps)
     for ep in tqdm(range(episodes)):
         #print('---')
-        #print(z)
+        #time.sleep(0.5)
+        
         for t in range(t_init, time_steps):
             #print(z)
             pruned_actions = pa.pruned_actions[t][z]
@@ -118,12 +124,13 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
             #print(z,action_chosen,next_state)
             #print('---')
             # Take the action, result may depend on uncertainty
+            #print(pa.pruned_actions[t][z])
+            #print(qtable[t][z])
             next_z = pa.take_action(z, action_chosen, eps_unc)
             if next_z == action_chosen:
                 action_result = 'intended'
             else:
                 action_result = 'unintended'
-
             reward = pa.reward(next_z)
             #print(reward)
             # TODO: shouldn't this update based on action_chosen as that was the "action"?
@@ -181,7 +188,7 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
             new_q = (1 - learn_rate) * cur_q + learn_rate * (reward + discount * max_future_q)
             qtable[0][z][init_z] = new_q
             pi[0][z] = max(qtable[0][z], key=qtable[0][z].get)
-            print(qtable.keys())
+            #print(qtable.keys())
 
         else:
             # static rewards: Randomly choose adjacent state for beginning of next ep
@@ -313,6 +320,7 @@ def test_policy(pi, pa, stl_expr, eps_unc, iters, mdp_type):
             twtl_pass_count += 1
 
         z_null = pa.get_null_state(z)
+        print(pa.g.neighbors(z))
         rdeg = 0
         if pa.is_STL_objective:
             z_init = pi[0][z_null]
