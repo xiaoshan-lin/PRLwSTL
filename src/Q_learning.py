@@ -103,13 +103,21 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
     # z = pa.init.keys()[0]
     # Loop for number of training episodes
     #print(t_init, time_steps)
-    time.sleep(1)
+    reward_list = []
+    stl_sat_rate = []
+    if pa.is_STL_objective:
+        stl_itv = 500
+        stl_sat_count = 0
+        stl_itv_count = 0       
+        parser = STL(pa.aug_mdp.stl_expr)
+        mdp_traj = [pa.get_mdp_state(z) for z in init_traj]
     for ep in tqdm(range(episodes)):
         traj_test = []
         #print('---')
         for t in range(t_init, time_steps):
             traj_test.append(z)
             pruned_actions = pa.pruned_actions[t][z]
+            
             if np.random.uniform() < epsilon:   # Explore
                 action_chosen = random.choice(pruned_actions)
                 action_chosen_by = "explore"
@@ -125,6 +133,7 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
             else:
                 action_result = 'unintended'
             reward = pa.reward(next_z)
+            reward_list.append(reward)
             # TODO: shouldn't this update based on action_chosen as that was the "action"?
             cur_q = qtable[t][z][action_chosen]
             if t+1 == time_steps:
@@ -149,6 +158,8 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
                 mdp_traj_log += mdp_str
 
             z = next_z
+            if pa.is_STL_objective:
+                mdp_traj.append(pa.get_mdp_state(next_z))
         traj_test.append(z)
         #print(traj_test)
         epsilon = epsilon * eps_decay
@@ -156,12 +167,29 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
         if pa.is_accepting_state(z):
             twtl_pass_count += 1
             #print(twtl_pass_count)
+        if pa.is_STL_objective:
+            stl_itv_count+=1
+            #print(mdp_traj)
+            #print(reward_list)
+            mdp_sig = [pa.aug_mdp.sig_dict[x] for x in mdp_traj]
+            rdeg = parser.rdegree(mdp_sig)
+            if rdeg > 0:
+                stl_sat_count += 1
+
+            if stl_itv_count == stl_itv:
+                stl_sat_rate.append(stl_sat_count/stl_itv)
+                print(stl_sat_count/stl_itv)
+                print(epsilon)   
+                stl_sat_count = 0
+                stl_itv_count = 0
 
         ep_rewards[ep] = ep_rew_sum
         ep_rew_sum = 0
 
         z = pa.get_null_state(z)
-        init_traj = []
+        init_traj = [z]
+        mdp_traj = [pa.get_mdp_state(z) for z in init_traj]
+        reward_list=[]
 
         '''if pa.is_STL_objective:
             #FIXME: pi[0][z] could be None
@@ -210,7 +238,7 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
             for x in init_mdp_traj:
                 mdp_traj_log += '{:<4}'.format(x)
 
-            np.savez(proj_dir+'/{}'.format(repeat), ep_rewards = ep_rewards)
+            np.savez(proj_dir+'/{}'.format(repeat), ep_rewards = ep_rewards, stl_sat_rate = stl_sat_rate)
 
 
     # print("TWTL success rate: {} / {} = {}".format(twtl_pass_count, episodes, twtl_pass_count/episodes))

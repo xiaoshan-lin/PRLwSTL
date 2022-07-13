@@ -35,6 +35,17 @@ def plot_result(proj_dir):
               if f.endswith(".npz"):
                   npz_list.append(np.load(os.path.join(root,f), 'rb',allow_pickle=True))
 
+    fig = plt.figure(figsize=(15, 5))
+    ax = fig.add_subplot(111) 
+    sat_arr = np.array([i['stl_sat_rate'].tolist() for i in npz_list]) 
+    sat_max = np.amax(sat_arr,0)
+    sat_min = np.amin(sat_arr,0)
+    sat_mean = np.mean(sat_arr,0)
+    ax.fill_between(np.arange(500,num_episodes+500,500), sat_min, sat_max, 
+                     facecolor=colors[2], alpha=alpha)
+    a1, = ax.plot(np.arange(500,num_episodes+500,500),sat_mean,c=colors[2],linewidth=3,label='reward')
+
+    '''
     reward_arr = np.array([i['ep_rewards'].tolist() for i in npz_list])         
     reward_max = np.amax(reward_arr,0)
     reward_min = np.amin(reward_arr,0)
@@ -52,11 +63,10 @@ def plot_result(proj_dir):
         average_min.append(sum(reward_min[left:right])/(right-left))
         average_mean.append(sum(reward_mean[left:right])/(right-left))    
    
-    fig = plt.figure(figsize=(15, 5))
-    ax = fig.add_subplot(111)    
+       
     ax.fill_between(range(num_episodes), average_min, average_max, 
                      facecolor=colors[2], alpha=alpha)
-    a1, = ax.plot(range(num_episodes),average_mean,c=colors[2],linewidth=3,label='reward')
+    a1, = ax.plot(range(num_episodes),average_mean,c=colors[2],linewidth=3,label='reward')'''
 
     pp = (a1,)
     #ax.set_ylim(-1,50)

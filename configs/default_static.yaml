@@ -10,7 +10,7 @@
 # This option sets the MDP type. The options are "flag-MDP", "tau-MDP", and "static rewards".
 # flag-MDP and tau-MDP use rewards calculated from the satisfaction of an STL specification defined later in this file,
 # and static rewards uses rewards assigned per state also defined later in this file.
-MDP type: static rewards
+MDP type: flag-MDP
 # MDP type: static rewards
 # MDP type: flag-MDP
 # MDP type: tau-MDP
@@ -85,7 +85,7 @@ static rewards:
 Q-learning config:
 
   # The number of episodes for learning
-  number of episodes: 10000
+  number of episodes: 1000
 
   # Parameters used in the Q-value update
   learning rate: 0.1

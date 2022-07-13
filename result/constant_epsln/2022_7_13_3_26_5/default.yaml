@@ -77,19 +77,19 @@ static rewards:
 Q-learning config:
 
   # The number of episodes for learning
-  number of episodes: 30000
+  number of episodes: 100000
 
   # Parameters used in the Q-value update
   learning rate: 0.1
   discount: 0.999
 
   # The number of times to repeat the learning for plotting results
-  repeat: 10
+  repeat: 1
 
   # The exploration probability in epison-greedy exploration is decayed as learning proceeds.
   # Exploration probability decay is calculated by solving the following equation: (start * decay^(num_eps - 1) = end)
   explore probability start: 0.4
-  explore probability end: 0.01
+  explore probability end: 0.07
 
 Testing:
   test_iters: 5

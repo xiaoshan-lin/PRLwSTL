@@ -12,7 +12,7 @@
 # and static rewards uses rewards assigned per state also defined later in this file.
 # MDP type: static rewards
 # MDP type: flag-MDP
-MDP type: tau-MDP
+MDP type: flag-MDP
 
 # The environment section defines properties of the grid environment, agent actions, and the MDP representation
 environment:

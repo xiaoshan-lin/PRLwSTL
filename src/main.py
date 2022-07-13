@@ -23,7 +23,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+'/../plot')
 from plot_result import plot_result
 
-CONFIG_PATH = '../configs/default_static.yaml'
+CONFIG_PATH = '../configs/default_ECC.yaml'
 
 NORMAL_COLOR = '\033[0m'
 
@@ -243,7 +243,10 @@ def main(function='l'):
             explore_prob_start = qlearn_cfg['explore probability start']
             explore_prob_end = qlearn_cfg['explore probability end']
             # start * decay^(num_eps - 1) = end
-            explore_prob_decay = (explore_prob_end/explore_prob_start)**(1/(num_episodes-1))
+
+            # TODO
+            # explore_prob_decay = (explore_prob_end/explore_prob_start)**(1/(num_episodes-1)) 
+            explore_prob_decay = (explore_prob_end/explore_prob_start)**(1/(0.8*num_episodes-1))
 
             # environment config
             env_cfg = config['environment']
