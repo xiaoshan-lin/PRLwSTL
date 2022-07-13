@@ -18,7 +18,7 @@ COLOR_DICT = {
 
 this_file_path = os.path.dirname(os.path.abspath(__file__))
 
-def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, log=True):
+def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, proj_dir, repeat, log=True):
     """
     Find the optimal policy using Q-learning
 
@@ -95,7 +95,6 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
             #print(p)
             #print(pa.get_new_ep_states(p))           
             pi[0][p] = max(qtable[0][p], key=qtable[0][p].get)'''
-    #print(qtable[0])
     if log:
         trajectory_reward_log.extend(init_traj)
         init_mdp_traj = [pa.get_mdp_state(z) for z in init_traj]
@@ -104,12 +103,12 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
     # z = pa.init.keys()[0]
     # Loop for number of training episodes
     #print(t_init, time_steps)
+    time.sleep(1)
     for ep in tqdm(range(episodes)):
+        traj_test = []
         #print('---')
-        #time.sleep(0.5)
-        
         for t in range(t_init, time_steps):
-            #print(z)
+            traj_test.append(z)
             pruned_actions = pa.pruned_actions[t][z]
             if np.random.uniform() < epsilon:   # Explore
                 action_chosen = random.choice(pruned_actions)
@@ -118,13 +117,7 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
                 action_chosen = pi[t][z]
                 action_chosen_by = "exploit"
             #print(action_chosen_by)
-            #cur_idx = int(z[0][1:])
-            #next_idx = cur_idx + pa.action_to_idx[action_chosen]
-            #next_state = [i for i in pruned_states if int(i[0][1:])==next_idx][0]
-            #print(z,action_chosen,next_state)
-            #print('---')
-            # Take the action, result may depend on uncertainty
-            #print(pa.pruned_actions[t][z])
+            #print(z)
             #print(qtable[t][z])
             next_z = pa.take_action(z, action_chosen, eps_unc)
             if next_z == action_chosen:
@@ -132,7 +125,6 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
             else:
                 action_result = 'unintended'
             reward = pa.reward(next_z)
-            #print(reward)
             # TODO: shouldn't this update based on action_chosen as that was the "action"?
             cur_q = qtable[t][z][action_chosen]
             if t+1 == time_steps:
@@ -157,11 +149,13 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
                 mdp_traj_log += mdp_str
 
             z = next_z
-
+        traj_test.append(z)
+        #print(traj_test)
         epsilon = epsilon * eps_decay
 
         if pa.is_accepting_state(z):
             twtl_pass_count += 1
+            #print(twtl_pass_count)
 
         ep_rewards[ep] = ep_rew_sum
         ep_rew_sum = 0
@@ -201,7 +195,7 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
             init_z = pa.get_null_state(init_z)
 
         z = init_z'''
-
+        #print(mdp_traj_log)
         if log:
             with open(tr_log_file, 'a') as log_file:
                 log_file.write(str(trajectory_reward_log))
@@ -216,6 +210,8 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
             for x in init_mdp_traj:
                 mdp_traj_log += '{:<4}'.format(x)
 
+            np.savez(proj_dir+'/{}'.format(repeat), ep_rewards = ep_rewards)
+
 
     # print("TWTL success rate: {} / {} = {}".format(twtl_pass_count, episodes, twtl_pass_count/episodes))
 
@@ -224,12 +220,10 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
     # plt.ylabel('Sum of rewards')
     # plt.show()
 
-    print(pi)
-    print(qtable)
     return pi
 
 
-def test_policy(pi, pa, stl_expr, eps_unc, iters, mdp_type):
+def test_policy(pi, pa, stl_expr, eps_unc, iters, mdp_type, proj_dir, test_iters):
     """
     Test a policy for a certian number of episodes and print 
         * The constraint mission success rate, 
@@ -266,6 +260,7 @@ def test_policy(pi, pa, stl_expr, eps_unc, iters, mdp_type):
     print('Testing optimal policy with {} episodes'.format(iters))
 
     mdp_log_file = os.path.join(this_file_path, '../output/test_policy_trajectory_log.txt')
+    traj_file = os.path.join(proj_dir,'trajectory_log.txt')
     open(mdp_log_file, 'w').close() # clear file
     log = True
 
@@ -278,7 +273,9 @@ def test_policy(pi, pa, stl_expr, eps_unc, iters, mdp_type):
 
     if log:
         mdp_traj_str = ''
+        traj_str = ''
         mdp_traj_log = []
+        traj_log = []
         init_mdp_traj = [pa.get_mdp_state(z) for z in init_traj]
         for x in init_mdp_traj:
             mdp_traj_str += '{:<4}'.format(x)
@@ -297,6 +294,9 @@ def test_policy(pi, pa, stl_expr, eps_unc, iters, mdp_type):
     reward_sum = 0
 
     for _ in range(iters):
+        if log:
+            
+            traj_str += pa.get_mdp_state(z)[1:]+','
         #print('---')
         for t in range(t_init, time_steps):
             
@@ -311,6 +311,7 @@ def test_policy(pi, pa, stl_expr, eps_unc, iters, mdp_type):
             if log:
                 mdp_str = COLOR_DICT[action_result] + COLOR_DICT[action_chosen_by] + '{:<4}'.format(pa.get_mdp_state(next_z))
                 mdp_traj_str += mdp_str
+                traj_str += pa.get_mdp_state(next_z)[1:]+','
 
             z = next_z
 
@@ -329,8 +330,9 @@ def test_policy(pi, pa, stl_expr, eps_unc, iters, mdp_type):
             if rdeg > 0:
                 stl_sat_count += 1
             stl_rdeg_sum += rdeg
-        '''
         rdeg = 0
+        '''
+        
         if pa.is_STL_objective:
             z_init = pi[0][z_null]
             init_traj = pa.get_new_ep_trajectory(z,z_init)
@@ -357,7 +359,9 @@ def test_policy(pi, pa, stl_expr, eps_unc, iters, mdp_type):
         if log:
             mdp_traj_str += NORMAL_COLOR + '| {:>6}'.format(rdeg)
             mdp_traj_log.append(mdp_traj_str)
+            traj_log.append(traj_str)
             mdp_traj_str = ''
+            traj_str = ''
             for pa_s in init_traj:
                 mdp_s = pa.get_mdp_state(pa_s)
                 mdp_traj_str += '{:<4}'.format(mdp_s)
@@ -367,6 +371,11 @@ def test_policy(pi, pa, stl_expr, eps_unc, iters, mdp_type):
             for line in mdp_traj_log:
                 log_file.write(line)
                 log_file.write('\n')
+
+        with open(traj_file, 'a') as log_file:
+            for line in traj_log:
+                log_file.write(line)
+                log_file.write('\n') 
 
     twtl_sat_rate = twtl_pass_count/iters
     stl_sat_rate = stl_sat_count/iters

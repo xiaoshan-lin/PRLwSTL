@@ -233,11 +233,12 @@ class AugPa(lomap.Model):
                 idx2 = int(s2[0][0][1:])
         action = self.idx_to_action[idx2-idx1]
         if self.correct_action_flag:
-            if action in self.corrected_action_left and idx1==0:
+            if action in self.corrected_action_left and (idx1==0 or idx1==2):
                 action = self.corrected_action_left[action]
-            elif action in self.corrected_action_right and idx1==1:
+                print([s1,s2,action])
+            elif action in self.corrected_action_right and (idx1==1 or idx1==3):
                 action = self.corrected_action_right[action]
-            
+                print([s1,s2,action])           
         return action       
 
     def take_action(self, s, a, uncertainty):
@@ -420,6 +421,7 @@ class AugPa(lomap.Model):
             for p in new_ep_dict:
                 # choose init state of new episode from the neighbor of the last state
                 new_ep_dict[p] = {q:[] for q in self.get_null_states() if q[0][0] in self.aug_mdp.mdp.g.neighbors(p[0][0])}
+            return new_ep_dict
             
         new_ep_dict = {}
         def new_ep_states_recurse(pa_s, tau, t = 0, temp_dict = None, hist = None):

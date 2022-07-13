@@ -1,9 +1,12 @@
-
+import argparse
 import create_environment as ce
 import timeit
 import yaml
 import os
 import copy
+from tkinter.messagebox import askyesno
+from tkinter import simpledialog
+import shutil
 
 from pyTWTL import lomap
 from pyTWTL import synthesis as synth
@@ -14,8 +17,13 @@ from fmdp_stl import Fmdp
 from dfa import create_dfa, save_dfa
 from static_reward_mdp import StaticRewardMdp
 import Q_learning as ql
+import datetime
+import sys
 
-CONFIG_PATH = '../configs/default_ECC.yaml'
+sys.path.append(os.path.dirname(os.path.abspath(__file__))+'/../plot')
+from plot_result import plot_result
+
+CONFIG_PATH = '../configs/default_static.yaml'
 
 NORMAL_COLOR = '\033[0m'
 
@@ -201,84 +209,127 @@ def build_environment(env_cfg, twtl_cfg, mdp_type, reward_cfg):
 #     print('Average environment creation time: {}'.format(np.mean(times)))
 
 
-def main():
+def main(function='l'):
     """
     Main function. Read in configuration values, construct the Pruned Time-Product MDP, 
     find the optimal policy, and test the optimal policy.
     """
+    try:
+        # plot result
+        if function == 'p':
+            plot_flag, proj_dir = plot_result('')
+            if not plot_flag:
+                print('Result plotting is canceled')
+        
+        # learn the policy
+        elif function == 'l':
+            # Load default config
+            my_path = os.path.dirname(os.path.abspath(__file__))
+            def_cfg_rel_path = CONFIG_PATH
+            def_cfg_path = os.path.join(my_path, def_cfg_rel_path)
+            with open(def_cfg_path, 'r') as f:
+                config = yaml.safe_load(f)
 
-    # Load default config
-    my_path = os.path.dirname(os.path.abspath(__file__))
-    def_cfg_rel_path = CONFIG_PATH
-    def_cfg_path = os.path.join(my_path, def_cfg_rel_path)
-    with open(def_cfg_path, 'r') as f:
-        config = yaml.safe_load(f)
+            # stl_expr = 'G[0,10]F[0,3](((x>1)&(x<2))&((y>3)&(y<4)))'
 
-    # stl_expr = 'G[0,10]F[0,3](((x>1)&(x<2))&((y>3)&(y<4)))'
+            # ==== Read in configuration values ====
+            # Q-learning config
+            qlearn_cfg = config['Q-learning config']
+            num_episodes = qlearn_cfg['number of episodes']     # of episodes
+            learn_rate = qlearn_cfg['learning rate']
+            discount   = qlearn_cfg['discount']
+            repeat = qlearn_cfg['repeat']
 
-    # ==== Read in configuration values ====
-    # Q-learning config
-    qlearn_cfg = config['Q-learning config']
-    num_episodes = qlearn_cfg['number of episodes']     # of episodes
-    learn_rate = qlearn_cfg['learning rate']
-    discount   = qlearn_cfg['discount']
+            explore_prob_start = qlearn_cfg['explore probability start']
+            explore_prob_end = qlearn_cfg['explore probability end']
+            # start * decay^(num_eps - 1) = end
+            explore_prob_decay = (explore_prob_end/explore_prob_start)**(1/(num_episodes-1))
 
-    explore_prob_start = qlearn_cfg['explore probability start']
-    explore_prob_end = qlearn_cfg['explore probability end']
-    # start * decay^(num_eps - 1) = end
-    explore_prob_decay = (explore_prob_end/explore_prob_start)**(1/(num_episodes-1))
+            # environment config
+            env_cfg = config['environment']
+            eps_unc    = env_cfg['real action uncertainty'] # Uncertainity in actions, real uncertainnity in MDP
+            eps_unc_learning = env_cfg['over estimated action uncertainty'] # Overestimated uncertainity used in learning
 
-    # environment config
-    env_cfg = config['environment']
-    eps_unc    = env_cfg['real action uncertainty'] # Uncertainity in actions, real uncertainnity in MDP
-    eps_unc_learning = env_cfg['over estimated action uncertainty'] # Overestimated uncertainity used in learning
+            # TWTL constraint config
+            twtl_cfg = config['TWTL constraint']
+            des_prob = twtl_cfg['desired satisfaction probability'] # Minimum desired probability of satisfaction
 
-    # TWTL constraint config
-    twtl_cfg = config['TWTL constraint']
-    des_prob = twtl_cfg['desired satisfaction probability'] # Minimum desired probability of satisfaction
+            # Testing config
+            test_cfg = config['Testing']
+            test_iters = test_cfg['test_iters']
 
-    mdp_type = config['MDP type']
-    if mdp_type == 'static rewards':
-        reward_cfg = config['static rewards']
-    else:
-        reward_cfg = config['aug-MDP rewards']
+            mdp_type = config['MDP type']
+            if mdp_type == 'static rewards':
+                reward_cfg = config['static rewards']
+            else:
+                reward_cfg = config['aug-MDP rewards']
+ 
+            # create project folder
+            proj_dir = os.path.join(this_file_path,'../result/constant_epsln') #TODO Add adpative learning
+            dt = datetime.datetime.today()
+            answer = simpledialog.askstring('Name your project', 'Please enter the name of your project', 
+                                            initialvalue='{}_{}_{}_{}_{}_{}'.format(dt.year, dt.month, 
+                                            dt.day,dt.hour,dt.minute,dt.second))
+            proj_dir = os.path.join(proj_dir, answer)
+            proj_dir = os.path.abspath(proj_dir)
+            os.mkdir(proj_dir)
+            shutil.copy(def_cfg_path, os.path.join(proj_dir,'default.yaml'))
+        
+            for r in range(repeat):
+            # ==== Construct the Pruned Time-Product MDP ====
+                prep_start_time = timeit.default_timer()
 
-    # test_gen_time()
+                # Construct the Product MDP
+                pa = build_environment(env_cfg, twtl_cfg, mdp_type, reward_cfg)
+                # Prune it at each time step
+                prune_start = timeit.default_timer()
+                pa.prune_actions(eps_unc_learning, des_prob)
+                prune_end = gen_start = timeit.default_timer()
+                print('Time PA action pruning time (s): {}'.format(prune_end - prune_start))
+                pa.gen_new_ep_states()
+                gen_end = timeit.default_timer()
 
-    # ==== Construct the Pruned Time-Product MDP ====
-    prep_start_time = timeit.default_timer()
+                prep_end_time = timeit.default_timer()
 
-    # Construct the Product MDP
-    pa = build_environment(env_cfg, twtl_cfg, mdp_type, reward_cfg)
-    # Prune it at each time step
-    prune_start = timeit.default_timer()
-    pa.prune_actions(eps_unc_learning, des_prob)
-    prune_end = gen_start = timeit.default_timer()
-    print('Time PA action pruning time (s): {}'.format(prune_end - prune_start))
-    pa.gen_new_ep_states()
-    gen_end = timeit.default_timer()
+                print('New ep/traj generation time (s): {}'.format(gen_end - gen_start))
+                print('')
+                print('Total environment creation time: {}'.format(prep_end_time - prep_start_time))
+                print('')
 
-    prep_end_time = timeit.default_timer()
+                # ==== Find the optimal policy ====
+                print('learning with {} episodes'.format(num_episodes))
+                timer = timeit.default_timer()
+                pi = ql.Q_learning(pa, num_episodes, eps_unc, learn_rate, discount, explore_prob_decay, 
+                                   explore_prob_start, proj_dir, r)
+                qlearning_time = timeit.default_timer() - timer
+                print('learning time: {} seconds'.format(qlearning_time))
 
-    print('New ep/traj generation time (s): {}'.format(gen_end - gen_start))
-    print('')
-    print('Total environment creation time: {}'.format(prep_end_time - prep_start_time))
-    print('')
+            # ==== test policy ====
+            stl_expr = config['aug-MDP rewards']['STL expression']
+            ql.test_policy(pi, pa, stl_expr, eps_unc, 500, mdp_type, proj_dir, test_iters)
 
-    # ==== Find the optimal policy ====
-    print('learning with {} episodes'.format(num_episodes))
-    timer = timeit.default_timer()
-    pi = ql.Q_learning(pa, num_episodes, eps_unc, learn_rate, discount, explore_prob_decay, explore_prob_start)
-    qlearning_time = timeit.default_timer() - timer
-    print('learning time: {} seconds'.format(qlearning_time))
+            plot_result(proj_dir) 
+            answer = askyesno(title='Confirmation',
+                              message='Do you want to save the data?')
+            if not answer:
+                shutil.rmtree(proj_dir)
 
-    # ==== test policy ====
-    stl_expr = config['aug-MDP rewards']['STL expression']
-    ql.test_policy(pi, pa, stl_expr, eps_unc, 500, mdp_type)
+    except KeyboardInterrupt:
+        answer = askyesno(title='Confirmation',
+                          message='Do you want to save the data?')
+        if not answer:
+            print('removing project directory ...')
+            shutil.rmtree(proj_dir)
+        sys.exit()
 
 
 
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser(description ='Specifying desired action, currently support two functions:\n\
+                                                   1. Learn a new task; 2. Plot saved data',
+                                     usage='--mode [l,p]')
+    parser.add_argument('--mode',required={'l','p'}, help ='l: Learn a new task; p: Plot saved data')
+    args = parser.parse_args()
+    main(function=args.mode)
 
