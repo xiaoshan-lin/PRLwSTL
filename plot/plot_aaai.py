@@ -5,6 +5,8 @@ import numpy as np
 import os
 import yaml
 
+this_file_path = os.path.dirname(os.path.abspath(__file__))
+
 def plot_result(proj_dir):
     alpha = 0.3
     
@@ -26,6 +28,8 @@ def plot_result(proj_dir):
         with open(cfg_path_tau[0], 'r') as f:
             config_tau = yaml.safe_load(f)
         proj_dir_tau = os.path.dirname(cfg_path_tau[0])
+
+        aaai_dir = os.path.join(this_file_path,'../result/constant_epsln/aaai')
     
     colors = [(174/255,199/255,232/255),(1,187/255,120/255),(152/255,223/255,138/255),(1,152/255,150/255),
               (219/255,219/255,141/255),(199/255,199/255,199/255),(158/255,218/255,229/255),(196/255,156/255,148/255)]
@@ -105,7 +109,7 @@ def plot_result(proj_dir):
     plt.tight_layout()
    
     print('Saving figure ...')
-    plt.savefig(proj_dir_flag+'/result.png', dpi=600)
+    plt.savefig(aaai_dir+'/result.png', dpi=600)
     print('Figure Saved')
     plt.show()
     return True, proj_dir_flag

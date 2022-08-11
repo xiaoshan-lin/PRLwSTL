@@ -29,6 +29,7 @@ class AugPa(lomap.Model):
         self.tau = self.aug_mdp.get_tau()
         #print(aug_mdp.g.nodes())
         #self.plot_graph(aug_mdp.g)
+
         #self.aug_---mdp.visualize()
         
         # generate
@@ -219,6 +220,8 @@ class AugPa(lomap.Model):
         #print(pruned_states)
         self.pruned_states = pruned_states
         self.pruned_actions = pruned_actions
+        #print( self.g.nodes())
+        #print(self.pruned_actions)
 
     def states_to_action(self, s1, s2): 
         match self.mdp_type:

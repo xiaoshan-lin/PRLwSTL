@@ -43,6 +43,7 @@ class Fmdp(lomap.Ts):
         flag_product = itertools.product(*flag_set)
         self.flag_set = sorted(itertools.product(*flag_set))
         self.states = list(itertools.product(mdp_states, flag_product))
+        print(self.states)
         node_attrs = [(s, self.mdp.g.nodes[s[0]]) for s in self.states]
         self.g.add_nodes_from(node_attrs)
 
@@ -162,7 +163,6 @@ class FmdpStl:
             # possibly stripped necessary ) off the end. Add some back.
             end_paren = ')' * (phi.count('(') - phi.count(')'))
             self.phi_i_list.append(phi + end_paren)
-
         # Get hrz (tau_i) and extract predicate of each 
         self.tau_i_list = []
         self.pred_i_list = []

@@ -73,7 +73,7 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
     # initialize Q table
     init_val = 0
     time_steps = pa.get_hrz()
-    qtable = {t:{} for t in range(t_init, time_steps)}
+    qtable = {t:{} for t in range(t_init, time_steps+1)}
     for t in qtable:
         qtable[t] = {p:{} for p in pa.get_states()}
         for p in qtable[t]:
@@ -102,7 +102,6 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
             mdp_traj_log += '{:<4}'.format(x)
     # z = pa.init.keys()[0]
     # Loop for number of training episodes
-    #print(t_init, time_steps)
     reward_list = []
     stl_sat_rate = []
     if pa.is_STL_objective:
@@ -112,21 +111,19 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
         parser = STL(pa.aug_mdp.stl_expr)
         mdp_traj = [pa.get_mdp_state(z) for z in init_traj]
     for ep in tqdm(range(episodes)):
-        traj_test = []
-        #print('---')
-        for t in range(t_init, time_steps):
-            traj_test.append(z)
-            pruned_actions = pa.pruned_actions[t][z]
-            
+        for t in range(t_init, time_steps+1):
+            # pruned_actions
+            if t < time_steps:
+                pruned_actions = pa.pruned_actions[t][z]
+            else:
+                pruned_actions = [pa.states_to_action(z, neighbor) for neighbor in pa.g.neighbors(z)] 
+
             if np.random.uniform() < epsilon:   # Explore
                 action_chosen = random.choice(pruned_actions)
                 action_chosen_by = "explore"
             else:                               # Exploit
                 action_chosen = pi[t][z]
                 action_chosen_by = "exploit"
-            #print(action_chosen_by)
-            #print(z)
-            #print(qtable[t][z])
             next_z = pa.take_action(z, action_chosen, eps_unc)
             if next_z == action_chosen:
                 action_result = 'intended'
@@ -136,11 +133,13 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
             reward_list.append(reward)
             # TODO: shouldn't this update based on action_chosen as that was the "action"?
             cur_q = qtable[t][z][action_chosen]
-            if t+1 == time_steps:
+            '''if t+1 == time_steps:
                 max_future_q = 0
             else:
                 future_qs = qtable[t+1][next_z]
-                max_future_q = max(future_qs.values())
+                max_future_q = max(future_qs.values())'''
+            future_qs = qtable[(t+1)%(time_steps+1)][next_z]
+            max_future_q = max(future_qs.values())
 
             # Update q value
             new_q = (1 - learn_rate) * cur_q + learn_rate * (reward + discount * max_future_q)
@@ -156,21 +155,18 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
                 trajectory_reward_log.append(next_z)
                 mdp_str = COLOR_DICT[action_result] + COLOR_DICT[action_chosen_by] + '{:<4}'.format(pa.get_mdp_state(next_z))
                 mdp_traj_log += mdp_str
-
+            if t == time_steps - 1:
+                final_z = z
             z = next_z
             if pa.is_STL_objective:
                 mdp_traj.append(pa.get_mdp_state(next_z))
-        traj_test.append(z)
-        #print(traj_test)
         epsilon = epsilon * eps_decay
 
-        if pa.is_accepting_state(z):
+        if pa.is_accepting_state(final_z):
             twtl_pass_count += 1
-            #print(twtl_pass_count)
+
         if pa.is_STL_objective:
             stl_itv_count+=1
-            #print(mdp_traj)
-            #print(reward_list)
             mdp_sig = [pa.aug_mdp.sig_dict[x] for x in mdp_traj]
             rdeg = parser.rdegree(mdp_sig)
             if rdeg > 0:
