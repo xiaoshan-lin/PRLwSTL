@@ -72,7 +72,7 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
     # initialize Q table
     init_val = 0
     time_steps = pa.get_hrz()
-    qtable = {t:{} for t in range(t_init, time_steps)}
+    qtable = {t:{} for t in range(t_init, time_steps+1)}
     for t in qtable:
         qtable[t] = {p:{} for p in pa.get_states()}
         for p in qtable[t]:
@@ -101,9 +101,13 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
 
     # Loop for number of training episodes
     for ep in tqdm(range(episodes)):
-        for t in range(t_init, time_steps):
-            #print(z)
-            pruned_actions = pa.pruned_actions[t][z]
+        for t in range(t_init, time_steps+1):
+            # pruned_actions
+            if t < time_steps:
+                pruned_actions = pa.pruned_actions[t][z]
+            else:
+                pruned_actions = [pa.states_to_action(z, neighbor) for neighbor in pa.g.neighbors(z)]
+
             if np.random.uniform() < epsilon:   # Explore
                 action_chosen = random.choice(pruned_actions)
                 action_chosen_by = "explore"
@@ -117,7 +121,7 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
             #print('---')
             # Take the action, result may depend on uncertainty
             next_z = pa.take_action(z, action_chosen, eps_unc)
-            if next_z == action_chosen:
+            if pa.states_to_action(z, next_z) == action_chosen:
                 action_result = 'intended'
             else:
                 action_result = 'unintended'
@@ -125,11 +129,14 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
             reward = pa.reward(next_z)
             # TODO: shouldn't this update based on action_chosen as that was the "action"?
             cur_q = qtable[t][z][action_chosen]
-            if t+1 == time_steps:
+            '''if t+1 == time_steps:
                 max_future_q = 0
             else:
                 future_qs = qtable[t+1][next_z]
-                max_future_q = max(future_qs.values())
+                max_future_q = max(future_qs.values())'''
+ 
+            future_qs = qtable[(t+1)%(time_steps+1)][next_z]
+            max_future_q = max(future_qs.values())
 
             # Update q value
             new_q = (1 - learn_rate) * cur_q + learn_rate * (reward + discount * max_future_q)
@@ -145,12 +152,13 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
                 trajectory_reward_log.append(next_z)
                 mdp_str = COLOR_DICT[action_result] + COLOR_DICT[action_chosen_by] + '{:<4}'.format(pa.get_mdp_state(next_z))
                 mdp_traj_log += mdp_str
-
+            
             z = next_z
-
+            if t == time_steps - 1:
+                final_z = z
         epsilon = epsilon * eps_decay
 
-        if pa.is_accepting_state(z):
+        if pa.is_accepting_state(final_z):
             twtl_pass_count += 1
 
         ep_rewards[ep] = ep_rew_sum
@@ -159,6 +167,7 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
         z = pa.get_null_state(z)
 
         if pa.is_STL_objective:
+            # TODO
             #FIXME: pi[0][z] could be None
             # Choose init state either randomly or by pi
             if np.random.uniform() < epsilon:   # Explore
@@ -182,15 +191,14 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
 
         else:
             # static rewards: Randomly choose adjacent state for beginning of next ep
-            init_states = list(pa.g.neighbors(z))
-            if init_states == []:
-                raise RuntimeError('ERROR: No neighbors of final state? Actions not reversible?')
-            init_z = random.choice(init_states)
+            #init_states = list(pa.g.neighbors(z))
+            #if init_states == []:
+                #raise RuntimeError('ERROR: No neighbors of final state? Actions not reversible?')
+            #
             # Don't want any progress toward TWTL satisfaction on this transition
-            init_z = pa.get_null_state(init_z)
-
+            init_z = z
         z = init_z
-
+        
         if log:
             with open(tr_log_file, 'a') as log_file:
                 log_file.write(str(trajectory_reward_log))
@@ -212,7 +220,6 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
     # plt.xlabel('Episode')
     # plt.ylabel('Sum of rewards')
     # plt.show()
-
 
     return pi
 
@@ -285,29 +292,30 @@ def test_policy(pi, pa, stl_expr, eps_unc, iters, mdp_type):
     reward_sum = 0
 
     for _ in range(iters):
-        for t in range(t_init, time_steps):
-            intended_z = pi[t][z]
+        for t in range(t_init, time_steps+1):
+            action_chosen = pi[t][z]
             action_chosen_by = 'exploit'
 
             # take action
-            next_z = pa.take_action(z, intended_z, eps_unc)
-            action_result = 'intended' if next_z == intended_z else 'unintended'
+            next_z = pa.take_action(z, action_chosen, eps_unc)
+            action_result = 'intended' if pa.states_to_action(z, next_z) == action_chosen else 'unintended'
 
             if log:
                 mdp_str = COLOR_DICT[action_result] + COLOR_DICT[action_chosen_by] + '{:<4}'.format(pa.get_mdp_state(next_z))
                 mdp_traj_str += mdp_str
 
             z = next_z
-
+            if t == time_steps - 1:
+                final_z = z
             mdp_traj.append(pa.get_mdp_state(next_z))
             reward_sum += pa.reward(next_z)
-
-        if pa.is_accepting_state(z):
+        
+        if pa.is_accepting_state(final_z):
             twtl_pass_count += 1
-
         z_null = pa.get_null_state(z)
         rdeg = 0
         if pa.is_STL_objective:
+            
             z_init = pi[0][z_null]
             init_traj = pa.get_new_ep_trajectory(z,z_init)
             mdp_sig = [pa.aug_mdp.sig_dict[x] for x in mdp_traj]
@@ -317,13 +325,11 @@ def test_policy(pi, pa, stl_expr, eps_unc, iters, mdp_type):
             stl_rdeg_sum += rdeg
         else:
             # Choose random adjacent
-            init_states = list(pa.g.neighbors(z))
-            z_init = random.choice(init_states)
-            z_init = pa.get_null_state(z_init)
+            #init_states = list(pa.g.neighbors(z))
+            #z_init = random.choice(init_states)
+            z_init = z_null
             init_traj = [z_init]
         z = z_init
-
-
         mdp_traj = [pa.get_mdp_state(p) for p in init_traj]
         reward_sum += pa.reward(z_init)
         # for p in init_traj:

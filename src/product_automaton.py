@@ -138,8 +138,8 @@ class AugPa(lomap.Model):
 
         ep_len = self.time_bound
         # initialize actions of time product MDP
-        pruned_states = [nx.convert.to_dict_of_lists(self.g) for _ in range(ep_len)]
-        pruned_actions = {t:{p:[] for p in self.g.nodes()} for t in range(ep_len)}
+        pruned_states = [nx.convert.to_dict_of_lists(self.g) for _ in range(ep_len + 1)]
+        pruned_actions = {t:{p:[] for p in self.g.nodes()} for t in range(ep_len + 1)}
 
         # create set of non-accepting states
         accepting_states = self.final
@@ -192,12 +192,13 @@ class AugPa(lomap.Model):
                     pruned_states[t][p] = pi_eps_go_states
                 
                 pruned_actions[t][p] = [self.states_to_action(p,q) for q in pruned_states[t][p]]
-
+        for p in self.g.nodes():
+            pruned_actions[ep_len][p] = [self.states_to_action(p, neighbor) for neighbor in self.g.neighbors(p)]
         self.pruned_states = pruned_states
         self.pruned_actions = pruned_actions
 
     def states_to_action(self, s1, s2):
-        print(s1[0][1:])
+        #print(s1[0][1:])
         idx1 = int(s1[0][1:])
         idx2 = int(s2[0][1:])
         action = self.idx_to_action[idx2-idx1]
@@ -338,12 +339,19 @@ class AugPa(lomap.Model):
     def get_null_state(self, pa_s):
         aug_mdp_s = self.get_aug_mdp_state(pa_s)
         null_aug_mdp_s = self.aug_mdp.get_null_state(aug_mdp_s)
-        null_pa_s = (null_aug_mdp_s, list(self.dfa.init.keys())[0])
+        #null_pa_s = (null_aug_mdp_s, list(self.dfa.init.keys())[0])
+        ts_prop = self.aug_mdp.g.nodes[null_aug_mdp_s].get('prop',set()) 
+        fsa_state = self.dfa.next_states_of_fsa(list(self.dfa.init.keys())[0], ts_prop)[0]
+        null_pa_s = (null_aug_mdp_s, fsa_state)
+
         if null_pa_s not in self.get_states():
+                raise Exception('Error: invalid null state: {}'.format(null_pa_s))
+
+        '''if null_pa_s not in self.get_states():
             # Due to using label of s' in DFA update
             null_pa_s = (null_aug_mdp_s, list(self.dfa.init.keys())[0] + 1)
             if null_pa_s not in self.get_states():
-                raise Exception('Error: invalid null state: {}'.format(null_pa_s))
+                raise Exception('Error: invalid null state: {}'.format(null_pa_s))'''
         return null_pa_s
 
     def is_accepting_state(self, pa_s):
