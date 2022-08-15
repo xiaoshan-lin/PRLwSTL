@@ -78,7 +78,7 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
         qtable[t] = {p:{} for p in pa.get_states()}
         for p in qtable[t]:
             qtable[t][p] = {a:init_val + np.random.normal(0,0.0001) for a in pa.pruned_actions[t][p]}
-    #print(qtable[0])
+
     # initialize optimal policy pi on pruned time product automaton
     pi = {t:{} for t in qtable}
     for t in pi:
@@ -125,7 +125,7 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
                 action_chosen = pi[t][z]
                 action_chosen_by = "exploit"
             next_z = pa.take_action(z, action_chosen, eps_unc)
-            if next_z == action_chosen:
+            if pa.states_to_action(z, next_z) == action_chosen:
                 action_result = 'intended'
             else:
                 action_result = 'unintended'
@@ -155,9 +155,9 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
                 trajectory_reward_log.append(next_z)
                 mdp_str = COLOR_DICT[action_result] + COLOR_DICT[action_chosen_by] + '{:<4}'.format(pa.get_mdp_state(next_z))
                 mdp_traj_log += mdp_str
+            z = next_z
             if t == time_steps - 1:
                 final_z = z
-            z = next_z
             if pa.is_STL_objective:
                 mdp_traj.append(pa.get_mdp_state(next_z))
         epsilon = epsilon * eps_decay
@@ -168,6 +168,7 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
         if pa.is_STL_objective:
             stl_itv_count+=1
             mdp_sig = [pa.aug_mdp.sig_dict[x] for x in mdp_traj]
+            mdp_sig = mdp_sig[:-1]
             rdeg = parser.rdegree(mdp_sig)
             if rdeg > 0:
                 stl_sat_count += 1
@@ -318,19 +319,15 @@ def test_policy(pi, pa, stl_expr, eps_unc, iters, mdp_type, proj_dir, test_iters
     reward_sum = 0
 
     for _ in range(iters):
-        if log:
-            
+        if log:           
             traj_str += pa.get_mdp_state(z)[1:]+','
-        #print('---')
-        for t in range(t_init, time_steps):
-            
-            intended_z = pi[t][z]
+        for t in range(t_init, time_steps+1):          
+            action_chosen = pi[t][z]
             action_chosen_by = 'exploit'
 
             # take action
-            next_z = pa.take_action(z, intended_z, eps_unc)
-            #print([z,next_z])
-            action_result = 'intended' if next_z == intended_z else 'unintended'
+            next_z = pa.take_action(z, action_chosen, eps_unc)
+            action_result = 'intended' if pa.states_to_action(z, next_z) == action_chosen else 'unintended'
 
             if log:
                 mdp_str = COLOR_DICT[action_result] + COLOR_DICT[action_chosen_by] + '{:<4}'.format(pa.get_mdp_state(next_z))
@@ -338,11 +335,12 @@ def test_policy(pi, pa, stl_expr, eps_unc, iters, mdp_type, proj_dir, test_iters
                 traj_str += pa.get_mdp_state(next_z)[1:]+','
 
             z = next_z
+            if t == time_steps - 1:
+                final_z = z
 
             mdp_traj.append(pa.get_mdp_state(next_z))
             reward_sum += pa.reward(next_z)
-
-        if pa.is_accepting_state(z):
+        if pa.is_accepting_state(final_z):
             twtl_pass_count += 1
 
         z_null = pa.get_null_state(z)
@@ -350,6 +348,7 @@ def test_policy(pi, pa, stl_expr, eps_unc, iters, mdp_type, proj_dir, test_iters
         init_traj = [z]
         if pa.is_STL_objective:
             mdp_sig = [pa.aug_mdp.sig_dict[x] for x in mdp_traj]
+            mdp_sig = mdp_sig[:-1]
             rdeg = parser.rdegree(mdp_sig)
             if rdeg > 0:
                 stl_sat_count += 1

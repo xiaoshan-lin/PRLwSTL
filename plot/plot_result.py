@@ -28,6 +28,11 @@ def plot_result(proj_dir):
               (219/255,219/255,141/255),(199/255,199/255,199/255),(158/255,218/255,229/255),(196/255,156/255,148/255)]
     num_episodes = config['Q-learning config']['number of episodes']
     des_prob = config['TWTL constraint']['desired satisfaction probability']
+    mdp_type = config['MDP type']
+    if mdp_type == 'flag-MDP':
+        reward_label = 'flag-MDP'
+    elif mdp_type == 'tau-MDP':
+        reward_label = r'$\tau$-MDP'
     npz_list = []
     
     for root, dirs, files in os.walk(proj_dir):
@@ -35,7 +40,7 @@ def plot_result(proj_dir):
               if f.endswith(".npz"):
                   npz_list.append(np.load(os.path.join(root,f), 'rb',allow_pickle=True))
 
-    fig = plt.figure(figsize=(15, 5))
+    fig = plt.figure(figsize=(10, 5))
     ax = fig.add_subplot(111) 
     sat_arr = np.array([i['stl_sat_rate'].tolist() for i in npz_list]) 
     sat_max = np.amax(sat_arr,0)
@@ -43,7 +48,7 @@ def plot_result(proj_dir):
     sat_mean = np.mean(sat_arr,0)
     ax.fill_between(np.arange(500,num_episodes+500,500), sat_min, sat_max, 
                      facecolor=colors[2], alpha=alpha)
-    a1, = ax.plot(np.arange(500,num_episodes+500,500),sat_mean,c=colors[2],linewidth=3,label='reward')
+    a1, = ax.plot(np.arange(500,num_episodes+500,500),sat_mean,c=colors[2],linewidth=3,label=reward_label)
 
     '''
     reward_arr = np.array([i['ep_rewards'].tolist() for i in npz_list])         
@@ -70,7 +75,10 @@ def plot_result(proj_dir):
 
     pp = (a1,)
     #ax.set_ylim(-1,50)
-    ax.legend(handles=pp,loc='best',frameon=False,ncol=1,prop={'size': 15})
+    ax.legend(handles=pp,loc='best',frameon=False,ncol=1,prop={'size': 20})
+    plt.xticks(fontsize=16)
+    plt.yticks(fontsize=16)
+    plt.xlabel('Number of Episodes', fontsize=18)
       
     '''
     ax = fig.add_subplot(224)      
@@ -80,10 +88,11 @@ def plot_result(proj_dir):
                    label='desired probability',linestyle='dashed')
     pp = (a1,a2,a3)
     ax.legend(handles=pp,loc='best',frameon=False,ncol=1,prop={'size': 15})'''
+    plt.title('STL Satisfaction Rate by Number of Episodes',fontsize=20)
     plt.tight_layout()
    
     print('Saving figure ...')
-    plt.savefig(proj_dir+'/result.png', dpi=1200)
+    plt.savefig(proj_dir+'/result.png', dpi=600)
     print('Figure Saved')
     plt.show()
     return True, proj_dir

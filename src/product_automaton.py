@@ -35,7 +35,8 @@ class AugPa(lomap.Model):
         # generate
         # Following has O(xda*2^|AP|) worst case. O(xd) for looping through all PA states * O(a * 2^|AP|) for adjacent MDP and DFA states
         product_model = synth.ts_times_fsa(aug_mdp, dfa)
-        self.init = product_model.init
+        #self.init = product_model.init
+        self.init_dict = product_model.init
         self.g = product_model.g
         self.final = product_model.final
         self.idx_to_action = {0:'stay',1:'E',-1:'W',-self.width:'N',self.width:'S',
@@ -59,7 +60,7 @@ class AugPa(lomap.Model):
         pa_to_remove = [p for p in self.get_states() if self.get_aug_mdp_state(p) == to_remove]
         self.g.remove_nodes_from(pa_to_remove)
 
-        self.init = {(aug_mdp_init, dfa_init):1}
+        self.init = {p_s:1 for p_s in self.init_dict.keys() if p_s[0]==aug_mdp_init}
 
         # Generate set of null states
         self.null_states = self._gen_null_states()
@@ -68,17 +69,13 @@ class AugPa(lomap.Model):
         self.energy_dict = None
 
     def _gen_null_states(self):
-        null_aug_mdp_states = set([self.aug_mdp.get_null_state(s) for s in self.aug_mdp.g.nodes()])
-        null_pa_states = [(s, list(self.dfa.init.keys())[0]) for s in null_aug_mdp_states]
-        for i,z in enumerate(null_pa_states):
-            if z not in self.get_states():
-                # Due to using label of s' in DFA update
-                z = (z[0], list(self.dfa.init.keys())[0] + 1)
-                if z not in self.get_states():
-                    # if still an invalid state, something is wrong
-                    raise Exception('Error: state not in Product MDP: {}'.format(z))
-                null_pa_states[i] = z
-
+        null_pa_states = []
+        for aug_mdp_s in self.aug_mdp.g.nodes():
+            null_aug_mdp_s = self.aug_mdp.get_null_state(self.aug_mdp.get_null_state(aug_mdp_s))
+            ts_prop = self.aug_mdp.g.nodes[null_aug_mdp_s].get('prop',set())
+            fsa_state = self.dfa.next_states_of_fsa(list(self.dfa.init.keys())[0], ts_prop)[0]
+            null_pa_s = (null_aug_mdp_s, fsa_state)
+            null_pa_states.append(null_pa_s)
         return null_pa_states
 
     def get_null_states(self):
@@ -159,8 +156,8 @@ class AugPa(lomap.Model):
 
         ep_len = self.time_bound
         # initialize actions of time product MDP
-        pruned_states = [nx.convert.to_dict_of_lists(self.g) for _ in range(ep_len)]
-        pruned_actions = {t:{p:[] for p in self.g.nodes()} for t in range(ep_len)}
+        pruned_states = [nx.convert.to_dict_of_lists(self.g) for _ in range(ep_len + 1)]
+        pruned_actions = {t:{p:[] for p in self.g.nodes()} for t in range(ep_len + 1)}
 
         # create set of non-accepting states
         accepting_states = self.final
@@ -218,6 +215,8 @@ class AugPa(lomap.Model):
                 #print(pruned_actions[t][p]) 
                 #print('---')
         #print(pruned_states)
+        for p in self.g.nodes():
+            pruned_actions[ep_len][p] = [self.states_to_action(p, neighbor) for neighbor in self.g.neighbors(p)]
         self.pruned_states = pruned_states
         self.pruned_actions = pruned_actions
         #print( self.g.nodes())
@@ -238,10 +237,10 @@ class AugPa(lomap.Model):
         if self.correct_action_flag:
             if action in self.corrected_action_left and (idx1==0 or idx1==2):
                 action = self.corrected_action_left[action]
-                print([s1,s2,action])
+                #print([s1,s2,action])
             elif action in self.corrected_action_right and (idx1==1 or idx1==3):
                 action = self.corrected_action_right[action]
-                print([s1,s2,action])           
+                #print([s1,s2,action])           
         return action       
 
     def take_action(self, s, a, uncertainty):
@@ -393,11 +392,12 @@ class AugPa(lomap.Model):
     def get_null_state(self, pa_s):
         aug_mdp_s = self.get_aug_mdp_state(pa_s)
         null_aug_mdp_s = self.aug_mdp.get_null_state(aug_mdp_s)
-        null_pa_s = (null_aug_mdp_s, list(self.dfa.init.keys())[0])
+        #null_pa_s = (null_aug_mdp_s, list(self.dfa.init.keys())[0])
+        ts_prop = self.aug_mdp.g.nodes[null_aug_mdp_s].get('prop',set()) 
+        fsa_state = self.dfa.next_states_of_fsa(list(self.dfa.init.keys())[0], ts_prop)[0]
+        null_pa_s = (null_aug_mdp_s, fsa_state)
+
         if null_pa_s not in self.get_states():
-            # Due to using label of s' in DFA update
-            null_pa_s = (null_aug_mdp_s, list(self.dfa.init.keys())[0] + 1)
-            if null_pa_s not in self.get_states():
                 raise Exception('Error: invalid null state: {}'.format(null_pa_s))
         return null_pa_s
 

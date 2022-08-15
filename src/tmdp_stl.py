@@ -6,11 +6,12 @@ from STL import STL
 from tqdm import tqdm
 
 class Tmdp(lomap.Ts):
-    def __init__(self, mdp, stl_expr, mdp_sig_dict):
+    def __init__(self, mdp, stl_expr, mdp_sig_dict, rew_type = 'sat'):
         # O(n^tau) worst case
         lomap.Ts.__init__(self, directed=True, multi=False)
 
         self.name = 'Tau MDP'
+        self.rew_type = rew_type
         self.mdp = mdp
         self.stl_expr = stl_expr
         self.sig_dict = mdp_sig_dict
@@ -161,9 +162,15 @@ class Tmdp(lomap.Ts):
             return 0
         temporal_op = self.tmdp_stl.get_outer_temporal_op()
         if temporal_op == 'F':
-            r = np.exp(beta * self.tmdp_stl.rdegree_rew(tmdp_s))
-        elif temporal_op == 'G':
-            r = -1 * np.exp(-1 * beta * self.tmdp_stl.rdegree_rew(tmdp_s))
+            if self.rew_type == 'robust':
+                r = np.exp(beta * self.tmdp_stl.rdegree_rew(tmdp_s))
+            elif self.rew_type == 'sat': 
+                r = np.exp(beta * self.sat(tmdp_s))
+        elif temporal_op == 'G':            
+            if self.rew_type == 'robust':
+                r = -1 * np.exp(-1 * beta * self.tmdp_stl.rdegree_rew(tmdp_s))
+            elif self.rew_type == 'sat': 
+                r = -1 * np.exp(-1 * beta * self.sat(tmdp_s))
             positive_offset = np.exp(0)
             r += positive_offset
         return r

@@ -132,7 +132,8 @@ def build_environment(env_cfg, twtl_cfg, mdp_type, reward_cfg):
         aug_mdp = Fmdp(ts, stl_expr, state_to_pos)
     elif mdp_type == 'tau-MDP':
         stl_expr = reward_cfg['STL expression']
-        aug_mdp = Tmdp(ts, stl_expr, state_to_pos)
+        rew_type = reward_cfg['STL reward type']
+        aug_mdp = Tmdp(ts, stl_expr, state_to_pos, rew_type)
     elif mdp_type == 'static rewards':
         hrz = dfa_horizon
         reward_dict = reward_cfg['reward dict']

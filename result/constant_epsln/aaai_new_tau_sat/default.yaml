@@ -69,7 +69,7 @@ aug-MDP rewards:
   # use either satifaction or robustness degree as reward
   # Flag MDP only support satifaction; tau-MDP supports both satisfaction and robustness degree
 # STL_reward_type: sat or robust
-  STL reward type: robust
+  STL reward type: sat
 
 
 # The region to reward map used in the static rewards MDP option
