@@ -23,7 +23,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+'/../plot')
 from plot_result import plot_result
 
-CONFIG_PATH = '../configs/aaai.yaml'
+CONFIG_PATH = '../configs/test.yaml'
 
 NORMAL_COLOR = '\033[0m'
 

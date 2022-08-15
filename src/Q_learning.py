@@ -111,8 +111,11 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
         parser = STL(pa.aug_mdp.stl_expr)
         mdp_traj = [pa.get_mdp_state(z) for z in init_traj]
     for ep in tqdm(range(episodes)):
+        time.sleep(0.5)
+        #print('-------------')
         for t in range(t_init, time_steps+1):
             # pruned_actions
+            #print(z)
             if t < time_steps:
                 pruned_actions = pa.pruned_actions[t][z]
             else:

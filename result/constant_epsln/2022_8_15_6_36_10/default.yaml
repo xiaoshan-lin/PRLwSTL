@@ -19,7 +19,7 @@ environment:
 
   # Height and width of the grid environment
   height: 2
-  width: 6
+  width: 2
 
   # Initial state for the first episode of learning
   init state: [0,0,0]
@@ -56,7 +56,7 @@ TWTL constraint:
 
   # The time horizon used when the custom task is set to "None" for a simple pick up and delivery.
   # This is not used if a TWTL task is given
-  time horizon: 13
+  time horizon: 3
 
   # Whether to save a png of the dfa in the output folder
   save dfa: True
@@ -64,7 +64,7 @@ TWTL constraint:
 
 # STL objective used in flag-MDP and tau-MDP MDP options
 aug-MDP rewards:
-  STL expression: G[0,10]F[0,3](((x>1)&(x<2))&((y>3)&(y<4)))
+  STL expression: G[0,1]F[0,2]y<1
 
   # use either satifaction or robustness degree as reward
   # Flag MDP only support satifaction; tau-MDP supports both satisfaction and robustness degree

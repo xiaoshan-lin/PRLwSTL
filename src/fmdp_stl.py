@@ -43,9 +43,9 @@ class Fmdp(lomap.Ts):
         flag_product = itertools.product(*flag_set)
         self.flag_set = sorted(itertools.product(*flag_set))
         self.states = list(itertools.product(mdp_states, flag_product))
-        print(self.states)
         node_attrs = [(s, self.mdp.g.nodes[s[0]]) for s in self.states]
         self.g.add_nodes_from(node_attrs)
+        print(self.states)
 
     def build_transitions(self):
         # O(a*n*tau^{N_phi}) worst case

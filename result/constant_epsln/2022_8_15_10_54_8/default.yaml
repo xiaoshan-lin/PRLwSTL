@@ -64,7 +64,7 @@ TWTL constraint:
 
 # STL objective used in flag-MDP and tau-MDP MDP options
 aug-MDP rewards:
-  STL expression: G[0,10]F[0,3](((x>1)&(x<2))&((y>3)&(y<4)))
+  STL expression: G[0,10]((F[0,3]x>1)|(F[0,3]x>2)|(F[0,3]x<1)|(F[0,3]y>1)|(F[0,3]y<1))
 
   # use either satifaction or robustness degree as reward
   # Flag MDP only support satifaction; tau-MDP supports both satisfaction and robustness degree

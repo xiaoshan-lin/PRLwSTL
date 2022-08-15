@@ -15,9 +15,8 @@ class AugPa(lomap.Model):
         # aug_mdp is an augmented mdp such as a tau-mdp or flag-mdp
         # dfa is generated from a twtl constraint
         # time_bound is both the time bound of the twtl task,W and the time horizon of the STL constraint
-
         lomap.Model.__init__(self, directed=True, multi=False)
-
+        
         self.aug_mdp = aug_mdp
         self.mdp_type = mdp_type
         self.dfa = dfa
@@ -27,11 +26,9 @@ class AugPa(lomap.Model):
         self.width = width
         self.height = height
         self.tau = self.aug_mdp.get_tau()
-        #print(aug_mdp.g.nodes())
+        print(aug_mdp.g.nodes())
         #self.plot_graph(aug_mdp.g)
-
         #self.aug_---mdp.visualize()
-        
         # generate
         # Following has O(xda*2^|AP|) worst case. O(xd) for looping through all PA states * O(a * 2^|AP|) for adjacent MDP and DFA states
         product_model = synth.ts_times_fsa(aug_mdp, dfa)
@@ -51,8 +48,10 @@ class AugPa(lomap.Model):
             self.correct_action_flag = False
 
         # TODO: reset_init seems like a messy thing to do
+        
         aug_mdp.reset_init()
         aug_mdp_init = list(aug_mdp.init.keys())[0]
+        print(aug_mdp_init)
         dfa_init = list(dfa.init.keys())[0]
 
         # May need to remove a certain aug mdp state
@@ -61,6 +60,8 @@ class AugPa(lomap.Model):
         self.g.remove_nodes_from(pa_to_remove)
 
         self.init = {p_s:1 for p_s in self.init_dict.keys() if p_s[0]==aug_mdp_init}
+        print(self.init_dict.keys())
+        print(self.init)
 
         # Generate set of null states
         self.null_states = self._gen_null_states()
