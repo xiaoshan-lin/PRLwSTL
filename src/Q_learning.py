@@ -2,6 +2,7 @@ import os
 import numpy as np
 import random
 from tqdm import tqdm
+import time
 
 from STL import STL
 
@@ -17,7 +18,7 @@ COLOR_DICT = {
 
 this_file_path = os.path.dirname(os.path.abspath(__file__))
 
-def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, log=True):
+def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, proj_dir, repeat, log=True):
     """
     Find the optimal policy using Q-learning
 
@@ -77,36 +78,45 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
         qtable[t] = {p:{} for p in pa.get_states()}
         for p in qtable[t]:
             qtable[t][p] = {a:init_val + np.random.normal(0,0.0001) for a in pa.pruned_actions[t][p]}
-     
+
     # initialize optimal policy pi on pruned time product automaton
     pi = {t:{} for t in qtable}
     for t in pi:
         for p in pa.pruned_actions[t]:
             pi[t][p] = max(pa.pruned_actions[t][p], key=qtable[t][p].get)
-  
+    
     # Make an entry in q table for learning initial states and initialize pi
-    if pa.is_STL_objective:
+    '''if pa.is_STL_objective:
         qtable[0] = {p:{} for p in pa.get_null_states()}
         pi[0] = {}
         for p in qtable[0]:
-            qtable[0][p] = {q:init_val + np.random.normal(0,0.0001) for q in pa.get_new_ep_states(p)}
-            pi[0][p] = max(qtable[0][p], key=qtable[0][p].get)
-
+            qtable[0][p] = {pa.states_to_action(p,q):init_val + np.random.normal(0,0.0001) for q in pa.get_new_ep_states(p)}
+            #print('---')
+            #print(p)
+            #print(pa.get_new_ep_states(p))           
+            pi[0][p] = max(qtable[0][p], key=qtable[0][p].get)'''
     if log:
         trajectory_reward_log.extend(init_traj)
         init_mdp_traj = [pa.get_mdp_state(z) for z in init_traj]
         for x in init_mdp_traj:
             mdp_traj_log += '{:<4}'.format(x)
     # z = pa.init.keys()[0]
-
     # Loop for number of training episodes
+    reward_list = []
+    stl_sat_rate = []
+    if pa.is_STL_objective:
+        stl_itv = 500
+        stl_sat_count = 0
+        stl_itv_count = 0       
+        parser = STL(pa.aug_mdp.stl_expr)
+        mdp_traj = [pa.get_mdp_state(z) for z in init_traj]
     for ep in tqdm(range(episodes)):
         for t in range(t_init, time_steps+1):
             # pruned_actions
             if t < time_steps:
                 pruned_actions = pa.pruned_actions[t][z]
             else:
-                pruned_actions = [pa.states_to_action(z, neighbor) for neighbor in pa.g.neighbors(z)]
+                pruned_actions = [pa.states_to_action(z, neighbor) for neighbor in pa.g.neighbors(z)] 
 
             if np.random.uniform() < epsilon:   # Explore
                 action_chosen = random.choice(pruned_actions)
@@ -114,19 +124,13 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
             else:                               # Exploit
                 action_chosen = pi[t][z]
                 action_chosen_by = "exploit"
-            #cur_idx = int(z[0][1:])
-            #next_idx = cur_idx + pa.action_to_idx[action_chosen]
-            #next_state = [i for i in pruned_states if int(i[0][1:])==next_idx][0]
-            #print(z,action_chosen,next_state)
-            #print('---')
-            # Take the action, result may depend on uncertainty
             next_z = pa.take_action(z, action_chosen, eps_unc)
             if pa.states_to_action(z, next_z) == action_chosen:
                 action_result = 'intended'
             else:
                 action_result = 'unintended'
-
             reward = pa.reward(next_z)
+            reward_list.append(reward)
             # TODO: shouldn't this update based on action_chosen as that was the "action"?
             cur_q = qtable[t][z][action_chosen]
             '''if t+1 == time_steps:
@@ -134,7 +138,6 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
             else:
                 future_qs = qtable[t+1][next_z]
                 max_future_q = max(future_qs.values())'''
- 
             future_qs = qtable[(t+1)%(time_steps+1)][next_z]
             max_future_q = max(future_qs.values())
 
@@ -152,22 +155,40 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
                 trajectory_reward_log.append(next_z)
                 mdp_str = COLOR_DICT[action_result] + COLOR_DICT[action_chosen_by] + '{:<4}'.format(pa.get_mdp_state(next_z))
                 mdp_traj_log += mdp_str
-            
             z = next_z
             if t == time_steps - 1:
                 final_z = z
+            if pa.is_STL_objective:
+                mdp_traj.append(pa.get_mdp_state(next_z))
         epsilon = epsilon * eps_decay
 
         if pa.is_accepting_state(final_z):
             twtl_pass_count += 1
 
+        if pa.is_STL_objective:
+            stl_itv_count+=1
+            mdp_sig = [pa.aug_mdp.sig_dict[x] for x in mdp_traj]
+            mdp_sig = mdp_sig[:-1]
+            rdeg = parser.rdegree(mdp_sig)
+            if rdeg > 0:
+                stl_sat_count += 1
+
+            if stl_itv_count == stl_itv:
+                stl_sat_rate.append(stl_sat_count/stl_itv)
+                print(stl_sat_count/stl_itv)
+                print(epsilon)   
+                stl_sat_count = 0
+                stl_itv_count = 0
+
         ep_rewards[ep] = ep_rew_sum
         ep_rew_sum = 0
 
         z = pa.get_null_state(z)
+        init_traj = [z]
+        mdp_traj = [pa.get_mdp_state(z) for z in init_traj]
+        reward_list=[]
 
-        if pa.is_STL_objective:
-            # TODO
+        '''if pa.is_STL_objective:
             #FIXME: pi[0][z] could be None
             # Choose init state either randomly or by pi
             if np.random.uniform() < epsilon:   # Explore
@@ -177,7 +198,6 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
             else:                               # Exploit
                 init_z = pi[0][z]
                 action_chosen_by = "exploit"
-
             init_traj = pa.get_new_ep_trajectory(z, init_z)
 
             # Update qtable and optimal policy
@@ -188,17 +208,19 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
             new_q = (1 - learn_rate) * cur_q + learn_rate * (reward + discount * max_future_q)
             qtable[0][z][init_z] = new_q
             pi[0][z] = max(qtable[0][z], key=qtable[0][z].get)
+            #print(qtable.keys())
 
         else:
             # static rewards: Randomly choose adjacent state for beginning of next ep
-            #init_states = list(pa.g.neighbors(z))
-            #if init_states == []:
-                #raise RuntimeError('ERROR: No neighbors of final state? Actions not reversible?')
-            #
+            init_states = list(pa.g.neighbors(z))
+            if init_states == []:
+                raise RuntimeError('ERROR: No neighbors of final state? Actions not reversible?')
+            init_z = random.choice(init_states)
             # Don't want any progress toward TWTL satisfaction on this transition
-            init_z = z
-        z = init_z
-        
+            init_z = pa.get_null_state(init_z)
+
+        z = init_z'''
+        #print(mdp_traj_log)
         if log:
             with open(tr_log_file, 'a') as log_file:
                 log_file.write(str(trajectory_reward_log))
@@ -213,6 +235,8 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
             for x in init_mdp_traj:
                 mdp_traj_log += '{:<4}'.format(x)
 
+            np.savez(proj_dir+'/{}'.format(repeat), ep_rewards = ep_rewards, stl_sat_rate = stl_sat_rate)
+
 
     # print("TWTL success rate: {} / {} = {}".format(twtl_pass_count, episodes, twtl_pass_count/episodes))
 
@@ -224,7 +248,7 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
     return pi
 
 
-def test_policy(pi, pa, stl_expr, eps_unc, iters, mdp_type):
+def test_policy(pi, pa, stl_expr, eps_unc, iters, mdp_type, proj_dir, test_iters):
     """
     Test a policy for a certian number of episodes and print 
         * The constraint mission success rate, 
@@ -261,6 +285,7 @@ def test_policy(pi, pa, stl_expr, eps_unc, iters, mdp_type):
     print('Testing optimal policy with {} episodes'.format(iters))
 
     mdp_log_file = os.path.join(this_file_path, '../output/test_policy_trajectory_log.txt')
+    traj_file = os.path.join(proj_dir,'trajectory_log.txt')
     open(mdp_log_file, 'w').close() # clear file
     log = True
 
@@ -273,7 +298,9 @@ def test_policy(pi, pa, stl_expr, eps_unc, iters, mdp_type):
 
     if log:
         mdp_traj_str = ''
+        traj_str = ''
         mdp_traj_log = []
+        traj_log = []
         init_mdp_traj = [pa.get_mdp_state(z) for z in init_traj]
         for x in init_mdp_traj:
             mdp_traj_str += '{:<4}'.format(x)
@@ -292,7 +319,9 @@ def test_policy(pi, pa, stl_expr, eps_unc, iters, mdp_type):
     reward_sum = 0
 
     for _ in range(iters):
-        for t in range(t_init, time_steps+1):
+        if log:           
+            traj_str += pa.get_mdp_state(z)[1:]+','
+        for t in range(t_init, time_steps+1):          
             action_chosen = pi[t][z]
             action_chosen_by = 'exploit'
 
@@ -303,19 +332,31 @@ def test_policy(pi, pa, stl_expr, eps_unc, iters, mdp_type):
             if log:
                 mdp_str = COLOR_DICT[action_result] + COLOR_DICT[action_chosen_by] + '{:<4}'.format(pa.get_mdp_state(next_z))
                 mdp_traj_str += mdp_str
+                traj_str += pa.get_mdp_state(next_z)[1:]+','
 
             z = next_z
             if t == time_steps - 1:
                 final_z = z
+
             mdp_traj.append(pa.get_mdp_state(next_z))
             reward_sum += pa.reward(next_z)
-        
         if pa.is_accepting_state(final_z):
             twtl_pass_count += 1
+
         z_null = pa.get_null_state(z)
-        rdeg = 0
+        z = z_null
+        init_traj = [z]
         if pa.is_STL_objective:
-            
+            mdp_sig = [pa.aug_mdp.sig_dict[x] for x in mdp_traj]
+            mdp_sig = mdp_sig[:-1]
+            rdeg = parser.rdegree(mdp_sig)
+            if rdeg > 0:
+                stl_sat_count += 1
+            stl_rdeg_sum += rdeg
+        rdeg = 0
+        '''
+        
+        if pa.is_STL_objective:
             z_init = pi[0][z_null]
             init_traj = pa.get_new_ep_trajectory(z,z_init)
             mdp_sig = [pa.aug_mdp.sig_dict[x] for x in mdp_traj]
@@ -325,13 +366,15 @@ def test_policy(pi, pa, stl_expr, eps_unc, iters, mdp_type):
             stl_rdeg_sum += rdeg
         else:
             # Choose random adjacent
-            #init_states = list(pa.g.neighbors(z))
-            #z_init = random.choice(init_states)
-            z_init = z_null
+            init_states = list(pa.g.neighbors(z))
+            z_init = random.choice(init_states)
+            z_init = pa.get_null_state(z_init)
             init_traj = [z_init]
-        z = z_init
+        z = z_init'''
+        
+
         mdp_traj = [pa.get_mdp_state(p) for p in init_traj]
-        reward_sum += pa.reward(z_init)
+        reward_sum += pa.reward(z)
         # for p in init_traj:
         #     reward_sum += pa.reward(p)
 
@@ -339,7 +382,9 @@ def test_policy(pi, pa, stl_expr, eps_unc, iters, mdp_type):
         if log:
             mdp_traj_str += NORMAL_COLOR + '| {:>6}'.format(rdeg)
             mdp_traj_log.append(mdp_traj_str)
+            traj_log.append(traj_str)
             mdp_traj_str = ''
+            traj_str = ''
             for pa_s in init_traj:
                 mdp_s = pa.get_mdp_state(pa_s)
                 mdp_traj_str += '{:<4}'.format(mdp_s)
@@ -349,6 +394,11 @@ def test_policy(pi, pa, stl_expr, eps_unc, iters, mdp_type):
             for line in mdp_traj_log:
                 log_file.write(line)
                 log_file.write('\n')
+
+        with open(traj_file, 'a') as log_file:
+            for line in traj_log:
+                log_file.write(line)
+                log_file.write('\n') 
 
     twtl_sat_rate = twtl_pass_count/iters
     stl_sat_rate = stl_sat_count/iters

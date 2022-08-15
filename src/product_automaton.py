@@ -7,34 +7,48 @@ import math
 import numpy as np
 import random
 from tqdm import tqdm
+import matplotlib.pyplot as plt
 
 class AugPa(lomap.Model):
 
-    def __init__(self, aug_mdp, dfa, time_bound, width, height):
+    def __init__(self, aug_mdp, mdp_type, dfa, time_bound, width, height):
         # aug_mdp is an augmented mdp such as a tau-mdp or flag-mdp
         # dfa is generated from a twtl constraint
-        # time_bound is both the time bound of the twtl task, and the time horizon of the STL constraint
+        # time_bound is both the time bound of the twtl task,W and the time horizon of the STL constraint
 
         lomap.Model.__init__(self, directed=True, multi=False)
 
         self.aug_mdp = aug_mdp
+        self.mdp_type = mdp_type
         self.dfa = dfa
         self.time_bound = time_bound
         self.reward_cache = {}
         self.is_STL_objective = not (aug_mdp.name == 'Static Reward MDP')
         self.width = width
         self.height = height
+        self.tau = self.aug_mdp.get_tau()
+        #print(aug_mdp.g.nodes())
+        #self.plot_graph(aug_mdp.g)
+
+        #self.aug_---mdp.visualize()
         
         # generate
         # Following has O(xda*2^|AP|) worst case. O(xd) for looping through all PA states * O(a * 2^|AP|) for adjacent MDP and DFA states
         product_model = synth.ts_times_fsa(aug_mdp, dfa)
-        self.init = product_model.init
+        #self.init = product_model.init
+        self.init_dict = product_model.init
         self.g = product_model.g
         self.final = product_model.final
         self.idx_to_action = {0:'stay',1:'E',-1:'W',-self.width:'N',self.width:'S',
                               -self.width-1:'NW',-self.width+1:'NE',self.width-1:'SW',self.width+1:'SE'}
         self.action_to_idx = {'stay':0,'E':1,'W':-1,'N':-self.width,'S':self.width,
                               'NW':-self.width-1,'NE':-self.width+1,'SW':self.width-1,'SE':self.width+1}
+        if self.width < 3 and self.height < 3:
+            self.correct_action_flag = True
+            self.corrected_action_left = {'SW':'E','W':'NE'}
+            self.corrected_action_right = {'E':'SW','NE':'W',}
+        else:
+            self.correct_action_flag = False
 
         # TODO: reset_init seems like a messy thing to do
         aug_mdp.reset_init()
@@ -46,7 +60,7 @@ class AugPa(lomap.Model):
         pa_to_remove = [p for p in self.get_states() if self.get_aug_mdp_state(p) == to_remove]
         self.g.remove_nodes_from(pa_to_remove)
 
-        self.init = {(aug_mdp_init, dfa_init):1}
+        self.init = {p_s:1 for p_s in self.init_dict.keys() if p_s[0]==aug_mdp_init}
 
         # Generate set of null states
         self.null_states = self._gen_null_states()
@@ -55,17 +69,13 @@ class AugPa(lomap.Model):
         self.energy_dict = None
 
     def _gen_null_states(self):
-        null_aug_mdp_states = set([self.aug_mdp.get_null_state(s) for s in self.aug_mdp.g.nodes()])
-        null_pa_states = [(s, list(self.dfa.init.keys())[0]) for s in null_aug_mdp_states]
-        for i,z in enumerate(null_pa_states):
-            if z not in self.get_states():
-                # Due to using label of s' in DFA update
-                z = (z[0], list(self.dfa.init.keys())[0] + 1)
-                if z not in self.get_states():
-                    # if still an invalid state, something is wrong
-                    raise Exception('Error: state not in Product MDP: {}'.format(z))
-                null_pa_states[i] = z
-
+        null_pa_states = []
+        for aug_mdp_s in self.aug_mdp.g.nodes():
+            null_aug_mdp_s = self.aug_mdp.get_null_state(self.aug_mdp.get_null_state(aug_mdp_s))
+            ts_prop = self.aug_mdp.g.nodes[null_aug_mdp_s].get('prop',set())
+            fsa_state = self.dfa.next_states_of_fsa(list(self.dfa.init.keys())[0], ts_prop)[0]
+            null_pa_s = (null_aug_mdp_s, fsa_state)
+            null_pa_states.append(null_pa_s)
         return null_pa_states
 
     def get_null_states(self):
@@ -126,6 +136,14 @@ class AugPa(lomap.Model):
     def get_energy(self, pa_state):
         return self.energy_dict[pa_state]
 
+    def plot_graph(self, graph):
+        pygraphviz_g = nx.nx_agraph.to_agraph(graph)
+        pygraphviz_g.layout('dot', args='-Nfontsize=30 -Nwidth="3" -Nheight="1" -Nmargin=0 -Gfontsize=15')
+        pygraphviz_g.draw('example.png', format='png')
+        img = plt.imread('example.png')
+        plt.imshow(img)
+        plt.show()
+
     def prune_actions(self, eps_uncertainty, des_prob):
         # Time complexity is O(txa^2) 
         # Loop through all time product states, all neighbors, all low probability transitions.
@@ -184,24 +202,45 @@ class AugPa(lomap.Model):
                     elif d_eps == d_eps_min:
                         pi_eps_go_states.append(next_p)
                         
-
+                #print([t,p])
+                #print(pruned_states[t][p])
                 if pruned_states[t][p] == []:
                     # record state signifying action minimizing d-epsilon-min
                     # In this scenario with one state for each action with p > 1 - eps, 
                     #   a state-state edge can represent an action
                     pruned_states[t][p] = pi_eps_go_states
+                    #print(pi_eps_go_states)
                 
                 pruned_actions[t][p] = [self.states_to_action(p,q) for q in pruned_states[t][p]]
+                #print(pruned_actions[t][p]) 
+                #print('---')
+        #print(pruned_states)
         for p in self.g.nodes():
             pruned_actions[ep_len][p] = [self.states_to_action(p, neighbor) for neighbor in self.g.neighbors(p)]
         self.pruned_states = pruned_states
         self.pruned_actions = pruned_actions
+        #print( self.g.nodes())
+        #print(self.pruned_actions)
 
-    def states_to_action(self, s1, s2):
-        #print(s1[0][1:])
-        idx1 = int(s1[0][1:])
-        idx2 = int(s2[0][1:])
+    def states_to_action(self, s1, s2): 
+        match self.mdp_type:
+            case 'static rewards':
+                idx1 = int(s1[0][1:])
+                idx2 = int(s2[0][1:])
+            case 'tau-MDP':
+                idx1 = int(s2[0][self.tau-2][1:])
+                idx2 = int(s2[0][self.tau-1][1:])
+            case 'flag-MDP':
+                idx1 = int(s1[0][0][1:])
+                idx2 = int(s2[0][0][1:])
         action = self.idx_to_action[idx2-idx1]
+        if self.correct_action_flag:
+            if action in self.corrected_action_left and (idx1==0 or idx1==2):
+                action = self.corrected_action_left[action]
+                #print([s1,s2,action])
+            elif action in self.corrected_action_right and (idx1==1 or idx1==3):
+                action = self.corrected_action_right[action]
+                #print([s1,s2,action])           
         return action       
 
     def take_action(self, s, a, uncertainty):
@@ -211,13 +250,27 @@ class AugPa(lomap.Model):
         
         # for verifying next_state
         # next_state = [i for i in self.pruned_states[t][s] if int(i[0][1:])==next_idx][0]
+        match self.mdp_type:
+            case 'static rewards':
+                cur_idx = int(s[0][1:])
+                next_idx = cur_idx + self.action_to_idx[a]
+                next_aug_mdp_s = 'r{}'.format(next_idx)
+            case 'tau-MDP':
+                cur_idx = int(s[0][self.tau-1][1:])
+                next_idx = cur_idx + self.action_to_idx[a]
+                next_mdp_s = 'r{}'.format(next_idx)
+                next_aug_mdp_s = s[0][1:]+(next_mdp_s,)
+            case 'flag-MDP':
+                cur_idx = int(s[0][0][1:])
+                next_idx = cur_idx + self.action_to_idx[a]
+                next_mdp_s = 'r{}'.format(next_idx)
+                flags = s[0][1]
+                next_flags = self.aug_mdp.fmdp_stl.flag_update(flags, next_mdp_s)
+                next_aug_mdp_s = (next_mdp_s,next_flags)
 
-        cur_idx = int(s[0][1:])
-        next_idx = cur_idx + self.action_to_idx[a]
-        ts_next_state = 'r{}'.format(next_idx)
-        ts_prop = self.aug_mdp.g.nodes[ts_next_state].get('prop',set())
+        ts_prop = self.aug_mdp.g.nodes[next_aug_mdp_s].get('prop',set())
         fsa_next_state = self.dfa.next_states_of_fsa(s[1], ts_prop)[0]
-        next_s = (ts_next_state, fsa_next_state)
+        next_s = (next_aug_mdp_s, fsa_next_state)
 
         if np.random.uniform() > uncertainty:
             return next_s
@@ -298,17 +351,17 @@ class AugPa(lomap.Model):
             z = init_pa_state
             if z not in self.get_states():
                 raise Exception("invalid pa state: {}".format(z))
-        tau = self.aug_mdp.get_tau()
+        tau = self.aug_mdp.get_init_tau()
         init_traj = [z]
 
-        for _ in range(1,tau):
+        '''for _ in range(1,tau):
             mdp_s = self.get_mdp_state(z)
             neighbors = self.g.neighbors(z)
             # choose next z with same mdp state
             z = next(iter([next_z for next_z in neighbors if self.get_mdp_state(next_z) == mdp_s]))
-            init_traj.append(z)
+            init_traj.append(z)'''
         
-        t_init = tau-1
+        t_init = 0
         return z, t_init, init_traj
 
     def reward(self, pa_s, beta = 2):
@@ -346,12 +399,6 @@ class AugPa(lomap.Model):
 
         if null_pa_s not in self.get_states():
                 raise Exception('Error: invalid null state: {}'.format(null_pa_s))
-
-        '''if null_pa_s not in self.get_states():
-            # Due to using label of s' in DFA update
-            null_pa_s = (null_aug_mdp_s, list(self.dfa.init.keys())[0] + 1)
-            if null_pa_s not in self.get_states():
-                raise Exception('Error: invalid null state: {}'.format(null_pa_s))'''
         return null_pa_s
 
     def is_accepting_state(self, pa_s):
@@ -372,8 +419,14 @@ class AugPa(lomap.Model):
         if not self.is_STL_objective:
             return
 
+        if self.mdp_type == 'flag-MDP':
+            new_ep_dict = {p:{} for p in self.get_null_states()}
+            for p in new_ep_dict:
+                # choose init state of new episode from the neighbor of the last state
+                new_ep_dict[p] = {q:[] for q in self.get_null_states() if q[0][0] in self.aug_mdp.mdp.g.neighbors(p[0][0])}
+            return new_ep_dict
+            
         new_ep_dict = {}
-
         def new_ep_states_recurse(pa_s, tau, t = 0, temp_dict = None, hist = None):
 
             # Assumes that pa_s is the state chosen at t = 0 TODO: is this still correct?
