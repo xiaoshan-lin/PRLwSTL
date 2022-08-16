@@ -22,8 +22,9 @@ class Fmdp(lomap.Ts):
 
         self.sig_dict = mdp_sig_dict
         self.fmdp_stl = FmdpStl(stl_expr, mdp_sig_dict)
-
-        self.flag_max = [tau-1 for tau in self.fmdp_stl.get_tau()]
+        
+        # instead of tau-1, use tau
+        self.flag_max = [tau for tau in self.fmdp_stl.get_tau()]
 
         #TODO only create states that can be accessed
         self.build_states()
@@ -33,8 +34,10 @@ class Fmdp(lomap.Ts):
         # set init state as mdp init state with 0 flags
         # TODO: Check that this is the correct initialization. May cause issues of mdp_init is a satisfying state.
         mdp_init = list(mdp.init.keys())[0]
+
+        # flag of F-MDP should not starts at 0
         flag_init = (0.,) * self.fmdp_stl.n
-        self.init = {(mdp_init, flag_init): 1}
+        self.init = {(mdp_init, self.fmdp_stl.flag_update(flag_init, mdp_init)): 1}
         
     def build_states(self):
         # O(n*tau)
@@ -45,7 +48,6 @@ class Fmdp(lomap.Ts):
         self.states = list(itertools.product(mdp_states, flag_product))
         node_attrs = [(s, self.mdp.g.nodes[s[0]]) for s in self.states]
         self.g.add_nodes_from(node_attrs)
-        print(self.states)
 
     def build_transitions(self):
         # O(a*n*tau^{N_phi}) worst case
@@ -178,12 +180,16 @@ class FmdpStl:
             self.pred_i_list.append(phi[end+1:])
 
         self.sig_dict = mdp_sig_dict
-        self.flag_max = [tau-1 for tau in self.tau_i_list]
+
+        # instead of tau-1, use tau
+        self.flag_max = [tau for tau in self.tau_i_list]
 
     def get_n(self):
         return self.n
 
     def get_tau(self):
+        print('---------')
+        print(self.tau_i_list)
         return self.tau_i_list
 
     def get_hrz(self):

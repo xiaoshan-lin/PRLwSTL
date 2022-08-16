@@ -12,7 +12,7 @@
 # and static rewards uses rewards assigned per state also defined later in this file.
 # MDP type: static rewards
 # MDP type: flag-MDP
-MDP type: tau-MDP
+MDP type: flag-MDP
 
 # The environment section defines properties of the grid environment, agent actions, and the MDP representation
 environment:
@@ -40,7 +40,7 @@ TWTL constraint:
   # The following defines the TWTL task that is probabilistically enforced. You must define named regions under "regions".
   # Alternatively, for a simple pickup and delivery tasks, the following can be set to "None", 
   # and "pickup" and "delivery" states must be defined under "regions"
-  TWTL task: '[H^1 r4]^[0, 6] * [H^1 r1]^[0,6]'
+  TWTL task: '[H^1 r0]^[0, 3]'
 
   # You can define region coordinates that will replace the respective name in the TWTL task.
   # You will have issues if one name is a subset of another (i.e. 'base' and 'base2')
@@ -56,7 +56,7 @@ TWTL constraint:
 
   # The time horizon used when the custom task is set to "None" for a simple pick up and delivery.
   # This is not used if a TWTL task is given
-  time horizon: 13
+  time horizon: 3
 
   # Whether to save a png of the dfa in the output folder
   save dfa: True
@@ -64,12 +64,12 @@ TWTL constraint:
 
 # STL objective used in flag-MDP and tau-MDP MDP options
 aug-MDP rewards:
-  STL expression: G[0,10]F[0,3](((x>1)&(x<2))&((y>3)&(y<4)))
+  STL expression: G[0,1]F[0,2]y<1
 
   # use either satifaction or robustness degree as reward
   # Flag MDP only support satifaction; tau-MDP supports both satisfaction and robustness degree
 # STL_reward_type: sat or robust
-  STL reward type: sat
+  STL reward type: robust
 
 
 # The region to reward map used in the static rewards MDP option

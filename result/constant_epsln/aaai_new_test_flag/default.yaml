@@ -12,7 +12,7 @@
 # and static rewards uses rewards assigned per state also defined later in this file.
 # MDP type: static rewards
 # MDP type: flag-MDP
-MDP type: tau-MDP
+MDP type: flag-MDP
 
 # The environment section defines properties of the grid environment, agent actions, and the MDP representation
 environment:
@@ -69,7 +69,7 @@ aug-MDP rewards:
   # use either satifaction or robustness degree as reward
   # Flag MDP only support satifaction; tau-MDP supports both satisfaction and robustness degree
 # STL_reward_type: sat or robust
-  STL reward type: sat
+  STL reward type: robust
 
 
 # The region to reward map used in the static rewards MDP option
