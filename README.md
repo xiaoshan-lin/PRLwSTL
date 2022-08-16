@@ -1,14 +1,18 @@
-<font size="6"> ConstrainedRL </font>  
+# Reinforcement Learning with Temporal Logic Objectives and Constraints
 
-<br />
+## Table of contents
+- [Purpose](#quick-start)
+-  [Setup](#notice)
+- [Usage](#status)
+- [Acknowledgement](#whats-included)
 
-# Purpose
+## Purpose
 ```
 TODO: This section is taken from the previous readme. Update for current work.
 ```
-We consider a delivery drone that is supposed to achieve pick-up and delivery tasks that arrive stochastically during a mission. Since a delivery drone is often equipped with a camera, it can also gather useful information by monitoring the environment during the pick-up and delivery task. Motivated by the multi-use of drones, we address a persistent monitoring problem where a drone’s high-level decision making is modeled as a Markov decision process (MDP) with unknown transition probabilities. The reward function is designed based on the valuable information over the environment, and the pick-up and delivery tasks are defined by bounded temporal logic specifications. We use a reinforcement learning (RL) algorithm that maximizes the expected sum of rewards while various dynamically arriving temporal logic specifications are satisfied with a desired probability in every episode during learning.
+We propose a novel approach to reinforcement learning with  Signal Temporal Logic (STL) objectives while probabilistically guaranteeing the satisfaction of a bounded temporal  logic constraint throughout the learning process. The proposed approach enables an agent to perform reinforcement learning under complex spatial-temporal specifications that  can be encoded by the respective temporal logics. Using this  
+approach, an agent can learn an optimal policy that guarantees the satisfaction of a primary task (bounded temporal logic) with a probability greater than a desired lower bound  in every episode, while trying to learn a secondary task (STL).
 
-<br />
 
 # Setup
 
@@ -100,26 +104,30 @@ pip install -r requirements.txt
 ```
 
 You are now in a self contained Python environment. Python, pip, and all installed packages will go into the `venv` directory.
-```bash
-# Run the program
-cd src
-python main.py
-# Run an animation
-python plot_route.py
-# Deactivate the environment
-deactivate
-```
+
 
 <br />
 
 ## Usage
-Running `main.py` in the `src` directory will use Q-learning to find the optimal policy for a simple pick-up and delivery problem with static rewards. The code will print out some time performance information and, at the end, the results of testing the found optimal policy. Running this code will also make some files in the `output` directory. You can look at `mdp_trajectory_log.txt` with an ANSI escape code compatible text viewer (I use `less -R`) for some colors that represent what is happening during learning. You can find at the top of `main.py` what each color represents. 
+```bash
+# activate virtual environment
+source /venv/bin/activate
+# Run the program to learn an policy
+cd src
+python3.10 main.py --mode l
 
-Next you can run `plot_route.py` which will show a nice animation of a route generated during policy test. The animation is not connected to this config file yet, so you will have to edit that file if you want to animate a different problem.
+```
+Running `python3.10 main.py --mode l` in the `src` directory will use Q-learning to find the optimal policy for a simple pick-up and delivery problem with static rewards. The code will print out some time performance information and, at the end, the results of testing the found optimal policy. Running this code will also make some files in the `output` directory. You can look at `mdp_trajectory_log.txt` with an ANSI escape code compatible text viewer (I use `less -R`) for some colors that represent what is happening during learning. You can find at the top of `main.py` what each color represents. 
 
-You can edit the environment, TWTL, STL, rewards, and learning parameters in `config/default.yaml`. All options are explained in that file.
+(Optional tool) Running `python3.10 main.py --mode p` in the `src` directory will direct you to the project folder, where you can select the yaml file under the project path, and the code will plot the results.
+
+You can edit the environment, TWTL, STL, rewards, and learning parameters in `config/aaai.yaml`. All options are explained in that file.
+
+To reproduce the simulation results, modify **MDP type, STL reward type** accordingly in `config/aaai.yaml`.
 
 <br />
 
-## PyTWTL
+## Acknowledgement
+### PyTWTL
 PyTWTL is the included program used to generate a DFA from a TWTL specification. You can learn more about PyTWTL at the following web page: https://sites.bu.edu/hyness/twtl/. Please cite their paper if you use this package.
+
