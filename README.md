@@ -116,7 +116,7 @@ python3.10 main.py --mode l
 ```
 Running `python3.10 main.py --mode l` in the `src` directory will use Q-learning to find the optimal policy for a simple pick-up and delivery problem with static rewards. The code will print out some time performance information and, at the end, the results of testing the found optimal policy. Running this code will also make some files in the `output` directory. You can look at `mdp_trajectory_log.txt` with an ANSI escape code compatible text viewer (I use `less -R`) for some colors that represent what is happening during learning. You can find at the top of `main.py` what each color represents. 
 
-(Optional tool) Running `python3.10 main.py --mode p` in the `src` directory will direct you to the project folder, where you can select the yaml file under the project path, and the code will plot the results.
+(Optional) Running `python3.10 main.py --mode p` in the `src` directory will direct you to the project folder, where you can select the yaml file under the project path, and the code will plot the results.
 
 You can edit the environment, TWTL, STL, rewards, and learning parameters in `config/aaai.yaml`. All options are explained in that file.
 
