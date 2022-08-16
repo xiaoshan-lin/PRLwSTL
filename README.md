@@ -17,7 +17,7 @@ approach, an agent can learn an optimal policy that guarantees the satisfaction 
 ## Setup
 
 
-### Ubuntu setup (Tested on 20.04 but should work on future versions)
+### Ubuntu setup (Tested on 18.04 and 20.04)
 
 Add the repository to apt for pre-built Python
 ```bash
@@ -45,7 +45,7 @@ sudo apt install graphviz libgraphviz-dev -y
 
 <br />
 
-### Mac OS setup (Tested on Monterey but should work on other versions)
+### Mac OS setup (Tested on Monterey)
 
 Install homebrew https://brew.sh/
 ```zsh
