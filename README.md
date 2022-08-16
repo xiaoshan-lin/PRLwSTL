@@ -1,10 +1,10 @@
 # Reinforcement Learning with Temporal Logic Objectives and Constraints
 
 ## Table of contents
-- [Purpose](#quick-start)
--  [Setup](#notice)
-- [Usage](#status)
-- [Acknowledgement](#whats-included)
+- [Purpose](#purpose)
+-  [Setup](#setup)
+- [Usage](#usage)
+- [Acknowledgement](#acknowledgement)
 
 ## Purpose
 ```
@@ -14,10 +14,10 @@ We propose a novel approach to reinforcement learning with  Signal Temporal Logi
 approach, an agent can learn an optimal policy that guarantees the satisfaction of a primary task (bounded temporal logic) with a probability greater than a desired lower bound  in every episode, while trying to learn a secondary task (STL).
 
 
-# Setup
+## Setup
 
 
-## Ubuntu setup (Tested on 20.04 but should work on future versions)
+### Ubuntu setup (Tested on 20.04 but should work on future versions)
 
 Add the repository to apt for pre-built Python
 ```bash
@@ -45,7 +45,7 @@ sudo apt install graphviz libgraphviz-dev -y
 
 <br />
 
-## Mac OS setup (Tested on Monterey but should work on other versions)
+### Mac OS setup (Tested on Monterey but should work on other versions)
 
 Install homebrew https://brew.sh/
 ```zsh
@@ -74,7 +74,7 @@ Install graphviz to draw visual graph representations
 
 <br />
 
-## GitHub SSH key configuration
+### GitHub SSH key configuration
 
 If you haven't previously, you will need to create an ssh key pair and add the public key to your GitHub account. This is required for cloneing a private repository and also for authentication when pushing. Alternatively, if you have created a GitHub Personal Access Token, you may be able to use that instead. Follow the instructions on the following pages.
 
@@ -92,7 +92,7 @@ git checkout py3
 
 <br />
 
-## Virtual environment setup (OS independent)
+### Virtual environment setup (OS independent)
 
 Install virtualenv and create a Python virtual environment called `venv` in the `ConstrainedRL` directory
 ```bash
