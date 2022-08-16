@@ -7,9 +7,6 @@
 - [Acknowledgement](#acknowledgement)
 
 ## Purpose
-```
-TODO: This section is taken from the previous readme. Update for current work.
-```
 We propose a novel approach to reinforcement learning with  Signal Temporal Logic (STL) objectives while probabilistically guaranteeing the satisfaction of a bounded temporal  logic constraint throughout the learning process. The proposed approach enables an agent to perform reinforcement learning under complex spatial-temporal specifications that  can be encoded by the respective temporal logics. Using this  
 approach, an agent can learn an optimal policy that guarantees the satisfaction of a primary task (bounded temporal logic) with a probability greater than a desired lower bound  in every episode, while trying to learn a secondary task (STL).
 
