@@ -176,8 +176,8 @@ def Q_learning(pa, episodes, eps_unc, learn_rate, discount, eps_decay, epsilon, 
 
             if stl_itv_count == stl_itv:
                 stl_sat_rate.append(stl_sat_count/stl_itv)
-                print(stl_sat_count/stl_itv)
-                print(epsilon)   
+                #print(stl_sat_count/stl_itv)
+                #print(epsilon)   
                 stl_sat_count = 0
                 stl_itv_count = 0
 

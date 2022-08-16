@@ -51,7 +51,7 @@ class AugPa(lomap.Model):
         
         aug_mdp.reset_init()
         aug_mdp_init = list(aug_mdp.init.keys())[0]
-        print(aug_mdp_init)
+        #print(aug_mdp_init)
         dfa_init = list(dfa.init.keys())[0]
 
         # May need to remove a certain aug mdp state

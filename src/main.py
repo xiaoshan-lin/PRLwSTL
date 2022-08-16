@@ -299,7 +299,7 @@ def main(function='l'):
                 print('')
                 print('Total environment creation time: {}'.format(prep_end_time - prep_start_time))
                 print('')
-
+                print('Repeating the learning algorithm: {}/{}'.format(r+1, repeat))
                 # ==== Find the optimal policy ====
                 print('learning with {} episodes'.format(num_episodes))
                 timer = timeit.default_timer()
