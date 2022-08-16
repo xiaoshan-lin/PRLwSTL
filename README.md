@@ -83,8 +83,6 @@ Clone this repository. Type `yes` if asked.
 ```bash
 git clone git@github.com:assured-autonomy/ConstrainedRL.git
 cd ConstrainedRL
-# Checkout the py3 branch
-git checkout py3
 ```
 
 <br />
