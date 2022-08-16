@@ -11,8 +11,8 @@
 # flag-MDP and tau-MDP use rewards calculated from the satisfaction of an STL specification defined later in this file,
 # and static rewards uses rewards assigned per state also defined later in this file.
 # MDP type: static rewards
-# MDP type: tau-MDP
-MDP type: flag-MDP
+# MDP type: flag-MDP
+MDP type: tau-MDP
 
 # The environment section defines properties of the grid environment, agent actions, and the MDP representation
 environment:
