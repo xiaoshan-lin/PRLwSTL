@@ -81,8 +81,8 @@ If you haven't previously, you will need to create an ssh key pair and add the p
 
 Clone this repository. Type `yes` if asked.
 ```bash
-git clone git@github.com:assured-autonomy/ConstrainedRL.git
-cd ConstrainedRL
+git clone git@github.com:xiaoshan-lin/PRLwSTL.git
+cd PRLwSTL
 ```
 
 <br />
